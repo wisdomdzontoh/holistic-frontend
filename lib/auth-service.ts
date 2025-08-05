@@ -89,8 +89,10 @@ class AuthService {
       });
 
       const data = await response.json();
+      console.log('Session status response:', data);
 
       if (!response.ok) {
+        console.log('Session status failed:', response.status, data);
         return { isAuthenticated: false };
       }
 

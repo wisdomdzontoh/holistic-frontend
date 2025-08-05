@@ -1,0 +1,338 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { 
+  X,
+  ChevronRight,
+  ChevronDown,
+  Building2,
+  Folder,
+  Circle
+} from 'lucide-react';
+
+import { DHIS2OrgUnit } from '@/lib/assessment-service';
+
+interface OrgUnitSelectionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onUpdate: (orgUnits: string[]) => void;
+  selectedOrgUnits: string[];
+  dhis2OrgUnits?: DHIS2OrgUnit[];
+}
+
+interface OrgUnitNode {
+  id: string;
+  name: string;
+  display_name: string;
+  level: number;
+  children?: OrgUnitNode[];
+  isExpanded?: boolean;
+  isSelected?: boolean;
+}
+
+export function OrgUnitSelectionModal({ 
+  isOpen, 
+  onClose, 
+  onUpdate, 
+  selectedOrgUnits,
+  dhis2OrgUnits = []
+}: OrgUnitSelectionModalProps) {
+  const [selectedUnits, setSelectedUnits] = useState<string[]>(selectedOrgUnits);
+  const [orgUnitTree, setOrgUnitTree] = useState<OrgUnitNode[]>([]);
+  const [filterOptions, setFilterOptions] = useState({
+    userOrgUnit: true,
+    userSubUnits: false,
+    userSubX2Units: false
+  });
+
+  // Convert flat org units to tree structure
+  useEffect(() => {
+    if (dhis2OrgUnits.length > 0) {
+      const tree = buildOrgUnitTree(dhis2OrgUnits);
+      setOrgUnitTree(tree);
+    }
+  }, [dhis2OrgUnits]);
+
+  // Initialize selected units
+  useEffect(() => {
+    setSelectedUnits(selectedOrgUnits);
+  }, [selectedOrgUnits]);
+
+  const buildOrgUnitTree = (orgUnits: DHIS2OrgUnit[]): OrgUnitNode[] => {
+    const unitMap = new Map<string, OrgUnitNode>();
+    const rootUnits: OrgUnitNode[] = [];
+
+    // Create nodes for all org units
+    orgUnits.forEach(unit => {
+      unitMap.set(unit.id, {
+        id: unit.id,
+        name: unit.name,
+        display_name: unit.display_name,
+        level: unit.level,
+        children: [],
+        isExpanded: false,
+        isSelected: selectedUnits.includes(unit.id)
+      });
+    });
+
+    // Build parent-child relationships
+    orgUnits.forEach(unit => {
+      const node = unitMap.get(unit.id);
+      if (node) {
+        if (unit.parent) {
+          const parentNode = unitMap.get(unit.parent.id);
+          if (parentNode) {
+            parentNode.children = parentNode.children || [];
+            parentNode.children.push(node);
+          }
+        } else {
+          rootUnits.push(node);
+        }
+      }
+    });
+
+    return rootUnits;
+  };
+
+  const toggleOrgUnitExpansion = (nodeId: string) => {
+    setOrgUnitTree(prev => toggleNodeExpansion(prev, nodeId));
+  };
+
+  const toggleNodeExpansion = (nodes: OrgUnitNode[], nodeId: string): OrgUnitNode[] => {
+    return nodes.map(node => {
+      if (node.id === nodeId) {
+        return { ...node, isExpanded: !node.isExpanded };
+      }
+      if (node.children) {
+        return { ...node, children: toggleNodeExpansion(node.children, nodeId) };
+      }
+      return node;
+    });
+  };
+
+  const toggleOrgUnitSelection = (nodeId: string) => {
+    setSelectedUnits(prev => 
+      prev.includes(nodeId) 
+        ? prev.filter(id => id !== nodeId)
+        : [...prev, nodeId]
+    );
+    
+    // Update tree selection state
+    setOrgUnitTree(prev => updateNodeSelection(prev, nodeId));
+  };
+
+  const updateNodeSelection = (nodes: OrgUnitNode[], nodeId: string): OrgUnitNode[] => {
+    return nodes.map(node => {
+      if (node.id === nodeId) {
+        const isSelected = !node.isSelected;
+        return { ...node, isSelected };
+      }
+      if (node.children) {
+        return { ...node, children: updateNodeSelection(node.children, nodeId) };
+      }
+      return node;
+    });
+  };
+
+  const renderOrgUnitNode = (node: OrgUnitNode, depth: number = 0) => {
+    const hasChildren = node.children && node.children.length > 0;
+    const isLeaf = !hasChildren;
+    const indentStyle = { marginLeft: `${depth * 20}px` };
+
+    return (
+      <div key={node.id} className="org-unit-node">
+        <div 
+          className="flex items-center py-1 hover:bg-gray-50 rounded px-1 cursor-pointer"
+          style={indentStyle}
+        >
+          {/* Expand/Collapse button */}
+          {hasChildren && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleOrgUnitExpansion(node.id);
+              }}
+              className="p-1 hover:bg-gray-100 rounded mr-1"
+            >
+              {node.isExpanded ? (
+                <ChevronDown className="h-4 w-4 text-gray-600" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-gray-600" />
+              )}
+            </button>
+          )}
+          {!hasChildren && <div className="w-6" />}
+          
+          {/* Checkbox */}
+          <Checkbox
+            checked={node.isSelected || false}
+            onCheckedChange={() => toggleOrgUnitSelection(node.id)}
+            className="h-4 w-4 mr-2"
+          />
+          
+          {/* Icon */}
+          {isLeaf ? (
+            <Circle className="h-3 w-3 text-gray-400 mr-2" />
+          ) : (
+            <Folder className="h-4 w-4 text-gray-500 mr-2" />
+          )}
+          
+          {/* Name */}
+          <span className="text-sm text-gray-800 flex-1">
+            {node.display_name}
+          </span>
+        </div>
+        
+        {/* Children */}
+        {hasChildren && node.isExpanded && (
+          <div className="children-container">
+            {node.children!.map(child => renderOrgUnitNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleUpdate = () => {
+    onUpdate(selectedUnits);
+    onClose();
+  };
+
+  const getSelectedOrgUnitNames = () => {
+    return selectedUnits.map(unitId => {
+      const findUnit = (units: DHIS2OrgUnit[]): DHIS2OrgUnit | undefined => {
+        for (const unit of units) {
+          if (unit.id === unitId) return unit;
+          if (unit.children) {
+            const found = findUnit(unit.children);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      
+      const unit = findUnit(dhis2OrgUnits);
+      return unit ? unit.display_name : unitId;
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-gray-800">Organisation unit</DialogTitle>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Filter Options */}
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="user-org-unit"
+                checked={filterOptions.userOrgUnit}
+                onCheckedChange={(checked) => 
+                  setFilterOptions(prev => ({ ...prev, userOrgUnit: checked as boolean }))
+                }
+              />
+              <label htmlFor="user-org-unit" className="text-sm text-gray-700">
+                User organisation unit
+              </label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="user-sub-units"
+                checked={filterOptions.userSubUnits}
+                onCheckedChange={(checked) => 
+                  setFilterOptions(prev => ({ ...prev, userSubUnits: checked as boolean }))
+                }
+              />
+              <label htmlFor="user-sub-units" className="text-sm text-gray-700">
+                User sub-units
+              </label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="user-sub-x2-units"
+                checked={filterOptions.userSubX2Units}
+                onCheckedChange={(checked) => 
+                  setFilterOptions(prev => ({ ...prev, userSubX2Units: checked as boolean }))
+                }
+              />
+              <label htmlFor="user-sub-x2-units" className="text-sm text-gray-700">
+                User sub-x2-units
+              </label>
+            </div>
+          </div>
+
+          {/* Org Unit Tree */}
+          <div className="border border-gray-200 rounded-md p-2 max-h-96 overflow-y-auto">
+            {orgUnitTree.length > 0 ? (
+              <div className="space-y-1">
+                {orgUnitTree.map(node => renderOrgUnitNode(node))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <Building2 className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                <p>No organization units available</p>
+              </div>
+            )}
+          </div>
+
+          {/* Selected Units Display */}
+          {selectedUnits.length > 0 && (
+            <div className="border-t pt-4">
+              <h3 className="font-medium mb-2 text-gray-800">Selected Units ({selectedUnits.length})</h3>
+              <div className="flex flex-wrap gap-2">
+                {getSelectedOrgUnitNames().map((name, index) => (
+                  <Badge 
+                    key={selectedUnits[index]} 
+                    variant="secondary" 
+                    style={{ backgroundColor: '#e6f3ff', color: '#265380', borderColor: '#265380' }}
+                  >
+                    {name}
+                    <button
+                      onClick={() => toggleOrgUnitSelection(selectedUnits[index])}
+                      className="ml-1 hover:text-blue-800"
+                      style={{ color: '#265380' }}
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end space-x-2 pt-4 border-t bg-gray-50 px-4 py-3 -mx-6 -mb-6">
+          <Button 
+            variant="outline" 
+            onClick={onClose} 
+            className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            Hide
+          </Button>
+          <Button 
+            onClick={handleUpdate}
+            className="text-white" 
+            style={{ backgroundColor: '#265380' }}
+          >
+            Update
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+} 

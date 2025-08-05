@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,13 +70,21 @@ export function LoginForm() {
       <div className="flex-1 flex items-center justify-center bg-white px-8 py-12">
         <div className="w-full max-w-md space-y-8">
           {/* Header */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-teal-500 rounded-full flex items-center justify-center">
-              <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
-                <div className="w-3 h-3 bg-gradient-to-br from-blue-500 to-teal-500 rounded-full"></div>
-              </div>
+          <div className="flex items-center space-x-4">
+            <div className="relative w-12 h-12">
+              <Image
+                src="/images/coat-of-arms.png"
+                alt="Ghana Coat of Arms"
+                width={48}
+                height={48}
+                className="object-contain"
+                priority
+              />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">HOLISTIC ASSESSMENT</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">HOLISTIC ASSESSMENT</h1>
+              <p className="text-sm text-gray-600">Health Facility Assessment Tool</p>
+            </div>
           </div>
 
           {/* Main Title */}
@@ -278,6 +287,21 @@ export function LoginForm() {
           <p className="text-white text-2xl font-bold leading-tight">
             Making holistic assessment<br />
             easy, seamlessly and efficiently
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="absolute bottom-2 left-8 right-8">
+          <p className="text-white text-xs text-center opacity-80">
+            Designed by{' '}
+            <a
+              href="https://wisdomdzontoh.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white hover:text-blue-200 underline"
+            >
+              Wisdom Dzontoh
+            </a>
           </p>
         </div>
       </div>

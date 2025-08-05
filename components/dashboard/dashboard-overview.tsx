@@ -18,6 +18,7 @@ import {
   Clock,
   Download
 } from 'lucide-react';
+import { dashboardService, DashboardSummary } from '@/lib/dashboard-service';
 
 interface KPICardProps {
   title: string;
@@ -83,17 +84,58 @@ function KPICard({ title, value, change, changeType, icon, color, description }:
 }
 
 export function DashboardOverview() {
-  const [data, setData] = useState({
-    totalFacilities: 156,
-    activeAssessments: 89,
-    averageScore: 4.2,
-    completionRate: 78,
-    performanceCategories: {
-      excellent: 45,
-      good: 32,
-      needsImprovement: 23
-    }
-  });
+  const [data, setData] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const dashboardData = await dashboardService.getDashboardSummary();
+        setData(dashboardData);
+      } catch (err) {
+        setError('Failed to load dashboard data');
+        console.error('Error fetching dashboard data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="text-center py-8">
+        <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Dashboard</h3>
+        <p className="text-gray-600 mb-4">{error || 'Unable to load dashboard data'}</p>
+        <Button onClick={() => window.location.reload()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   const kpiData = [
     {
@@ -209,12 +251,7 @@ export function DashboardOverview() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {[
-                { facility: 'Korle Bu Teaching Hospital', action: 'Assessment completed', time: '2 hours ago', status: 'success' },
-                { facility: 'Ridge Hospital', action: 'Assessment started', time: '4 hours ago', status: 'pending' },
-                { facility: '37 Military Hospital', action: 'Data updated', time: '6 hours ago', status: 'info' },
-                { facility: 'La General Hospital', action: 'Assessment failed', time: '8 hours ago', status: 'error' }
-              ].map((activity, index) => (
+              {data.recentActivity.map((activity, index) => (
                 <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                   <div className={`w-2 h-2 rounded-full ${
                     activity.status === 'success' ? 'bg-green-500' :

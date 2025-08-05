@@ -9,13 +9,10 @@ import {
   LayoutDashboard,
   BarChart3,
   Target,
-  Building2,
   FileText,
-  Settings,
   ChevronLeft,
   ChevronRight,
   TrendingUp,
-  Users,
   Calendar,
   Download
 } from 'lucide-react';
@@ -28,22 +25,10 @@ const navigationItems = [
     description: 'Dashboard overview'
   },
   {
-    name: 'Assessments',
-    href: '/dashboard/assessments',
+    name: 'Holistic Assessment',
+    href: '/dashboard/assessment',
     icon: Target,
-    description: 'View and manage assessments'
-  },
-  {
-    name: 'Indicators',
-    href: '/dashboard/indicators',
-    icon: BarChart3,
-    description: 'Manage indicators and thresholds'
-  },
-  {
-    name: 'Facilities',
-    href: '/dashboard/facilities',
-    icon: Building2,
-    description: 'Health facilities management'
+    description: 'Main assessment interface'
   },
   {
     name: 'Reports',
@@ -58,28 +43,10 @@ const navigationItems = [
     description: 'Performance trends analysis'
   },
   {
-    name: 'Users',
-    href: '/dashboard/users',
-    icon: Users,
-    description: 'User management'
-  },
-  {
-    name: 'Periods',
-    href: '/dashboard/periods',
-    icon: Calendar,
-    description: 'Assessment periods'
-  },
-  {
     name: 'Exports',
     href: '/dashboard/exports',
     icon: Download,
     description: 'Export data and reports'
-  },
-  {
-    name: 'Settings',
-    href: '/dashboard/settings',
-    icon: Settings,
-    description: 'System configuration'
   }
 ];
 
@@ -116,14 +83,19 @@ export function DashboardSidebar() {
                 className={cn(
                   "flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-blue-100 text-blue-700 border-r-2 border-blue-700"
+                    ? "border-r-2"
                     : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                 )}
+                style={isActive ? { 
+                  backgroundColor: '#f0f8ff', 
+                  color: '#265380', 
+                  borderRightColor: '#265380' 
+                } : {}}
               >
                 <item.icon className={cn(
                   "h-5 w-5",
-                  isActive ? "text-blue-700" : "text-gray-500"
-                )} />
+                  isActive ? "" : "text-gray-500"
+                )} style={isActive ? { color: '#265380' } : {}} />
                 {!collapsed && (
                   <div className="flex-1">
                     <div>{item.name}</div>
