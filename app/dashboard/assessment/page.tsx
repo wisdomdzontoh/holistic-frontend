@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import PeriodSelectionModal from '@/components/modals/period-selection-modal';
 import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-modal';
 import { assessmentService, AssessmentData, AssessmentPeriod, OrgUnit, Period, DHIS2OrgUnit } from '@/lib/assessment-service';
+import ExcelTable from '@/components/assessment/excel-table';
 import { 
   Calendar, 
   Download, 
@@ -195,13 +196,77 @@ export default function AssessmentPage() {
   };
 
   const handleCellEdit = (indicatorId: number, period: string, value: string) => {
-    // This would be implemented to update indicator data values
-    console.log('Cell edit:', { indicatorId, period, value });
+    // Update the multiPeriodData with the new cell value
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
+      
+      const updatedData = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
+        objectives: periodData.objectives.map(objective => ({
+          ...objective,
+          indicators: objective.indicators.map(indicator => {
+            if (indicator.id === indicatorId) {
+              return {
+                ...indicator,
+                data_values: {
+                  ...indicator.data_values,
+                  [period]: {
+                    value: parseFloat(value) || 0,
+                    calculated_value: parseFloat(value) || 0,
+                    created_at: new Date().toISOString()
+                  }
+                }
+              };
+            }
+            return indicator;
+          })
+        }))
+      })) as AssessmentData[];
+      
+      return { ...prev, multiPeriodData: updatedData };
+    });
   };
 
   const handleMilestoneScoreChange = (indicatorId: number, score: string) => {
-    // This would be implemented to update milestone scores
-    console.log('Milestone score change:', { indicatorId, score });
+    // Update the multiPeriodData with the new score
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
+      
+      const updatedData = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
+        objectives: periodData.objectives.map(objective => ({
+          ...objective,
+          indicators: objective.indicators.map(indicator => {
+            if (indicator.id === indicatorId) {
+              const numScore = parseFloat(score);
+              const scoreColor = getScoreColor(numScore);
+              const scoreLabel = getScoreLabel(numScore);
+              
+              return {
+                ...indicator,
+                score: {
+                  ...indicator.score,
+                  score: numScore,
+                  score_color: scoreColor,
+                  score_label: scoreLabel,
+                  is_manual_override: true
+                }
+              };
+            }
+            return indicator;
+          })
+        }))
+      })) as AssessmentData[];
+      
+      return { ...prev, multiPeriodData: updatedData };
+    });
+  };
+
+  const getScoreLabel = (score: number) => {
+    if (score >= 1) return 'Highly Performing';
+    if (score >= 0) return 'Sustained';
+    if (score >= -1) return 'Underperforming';
+    return 'Severely Underperforming';
   };
 
   const getScoreColor = (score: number | undefined) => {
@@ -635,85 +700,9 @@ export default function AssessmentPage() {
           </div>
         </div>
 
-        {/* Multi-Period Assessment Results */}
-        {state.multiPeriodData && state.multiPeriodData.length > 0 && (
-          <div className="mb-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Assessment Results</h3>
-              
-              <div className="space-y-4">
-                {state.multiPeriodData.map((periodData, periodIndex) => (
-                  <div key={periodIndex} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-md font-medium text-gray-700">
-                        {periodData.assessment_period.name}
-                      </h4>
-                      {periodData.sector_score && (
-                        <Badge 
-                          className={`px-3 py-1 text-sm font-medium ${
-                            periodData.sector_score.score_color === 'green' ? 'bg-green-100 text-green-800' :
-                            periodData.sector_score.score_color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                            periodData.sector_score.score_color === 'orange' ? 'bg-orange-100 text-orange-800' :
-                            'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {periodData.sector_score.score_label} ({periodData.sector_score.overall_score.toFixed(1)})
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {periodData.objectives.map((objective) => (
-                        <div key={objective.id} className="border border-gray-200 rounded p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <h5 className="text-sm font-medium text-gray-700">{objective.name}</h5>
-                            {objective.score && (
-                              <Badge 
-                                className={`px-2 py-1 text-xs ${
-                                  objective.score.score_color === 'green' ? 'bg-green-100 text-green-800' :
-                                  objective.score.score_color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
-                                  objective.score.score_color === 'orange' ? 'bg-orange-100 text-orange-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}
-                              >
-                                {objective.score.score_label}
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          <div className="space-y-1">
-                            {objective.indicators.slice(0, 3).map((indicator) => (
-                              <div key={indicator.id} className="flex items-center justify-between text-xs">
-                                <span className="text-gray-600 truncate">{indicator.name}</span>
-                                {indicator.score && (
-                                  <span className={`px-1 py-0.5 rounded text-xs ${
-                                    indicator.score.score_color === 'green' ? 'bg-green-50 text-green-700' :
-                                    indicator.score.score_color === 'yellow' ? 'bg-yellow-50 text-yellow-700' :
-                                    indicator.score.score_color === 'orange' ? 'bg-orange-50 text-orange-700' :
-                                    'bg-red-50 text-red-700'
-                                  }`}>
-                                    {indicator.score.score_label}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                            {objective.indicators.length > 3 && (
-                              <div className="text-xs text-gray-500">
-                                +{objective.indicators.length - 3} more indicators
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Assessment Table */}
+
+        {/* Excel-like Assessment Table */}
         <Card className="bg-white shadow-md border-gray-200">
           <CardHeader className="bg-gray-50 border-b border-gray-200">
             <div className="flex items-center justify-between">
@@ -731,108 +720,32 @@ export default function AssessmentPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="bg-white">
+          <CardContent className="bg-white p-0">
             {state.loading ? (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="h-6 w-6 animate-spin mr-2" />
                 <span>Loading assessment data...</span>
               </div>
-            ) : state.data ? (
-              <div className="space-y-6">
-                {/* Sector Score Summary */}
-                {state.data.sector_score && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold text-blue-800">Sector Performance</h3>
-                        <p className="text-blue-600">
-                          {state.data.org_unit_name} - {state.data.assessment_period.name}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold" style={{ color: state.data.sector_score.score_color }}>
-                          {state.data.sector_score.overall_score?.toFixed(2) || 'N/A'}
-                        </div>
-                        <div className="text-sm text-gray-600">{state.data.sector_score.score_label}</div>
-                      </div>
+            ) : state.isGenerating ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+                <div>
+                  <div>Generating assessment report...</div>
+                  {state.syncProgress && (
+                    <div className="text-sm text-gray-500 mt-1">
+                      {state.syncProgress.message} ({state.syncProgress.current}/{state.syncProgress.total})
                     </div>
-                  </div>
-                )}
-
-                {/* Objectives and Indicators */}
-                {state.data.objectives.map((objective) => (
-                  <div key={objective.id} className="border border-gray-200 rounded-lg">
-                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-semibold text-gray-800">{objective.name}</h4>
-                          <p className="text-sm text-gray-600">{objective.description}</p>
-                        </div>
-                        {objective.score && (
-                          <div className="text-right">
-                            <div className="text-lg font-bold" style={{ color: objective.score.score_color }}>
-                              {objective.score.final_score?.toFixed(2) || 'N/A'}
-                            </div>
-                            <div className="text-sm text-gray-600">{objective.score.score_label}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="p-4">
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse border border-gray-300">
-                          <thead>
-                            <tr className="bg-gray-100">
-                              <th className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">Indicator</th>
-                              <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Current Value</th>
-                              <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Target</th>
-                              <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Score</th>
-                              <th className="border border-gray-300 px-3 py-2 text-center text-sm font-medium">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {objective.indicators.map((indicator) => (
-                              <tr key={indicator.id} className="hover:bg-gray-50">
-                                <td className="border border-gray-300 px-3 py-2 text-sm">
-                                  <div>
-                                    <div className="font-medium">{indicator.name}</div>
-                                    <div className="text-xs text-gray-500">{indicator.description}</div>
-                                  </div>
-                                </td>
-                                <td className="border border-gray-300 px-3 py-2 text-center text-sm">
-                                  {indicator.score?.current_value?.toFixed(2) || 'N/A'}
-                                </td>
-                                <td className="border border-gray-300 px-3 py-2 text-center text-sm">
-                                  {indicator.target_value?.toFixed(2) || 'N/A'}
-                                </td>
-                                <td className="border border-gray-300 px-3 py-2 text-center">
-                                  {indicator.score ? (
-                                    <Badge 
-                                      className="text-xs"
-                                      style={{ 
-                                        backgroundColor: indicator.score.score_color + '20',
-                                        color: indicator.score.score_color,
-                                        borderColor: indicator.score.score_color
-                                      }}
-                                    >
-                                      {indicator.score.score}
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-gray-400">-</span>
-                                  )}
-                                </td>
-                                <td className="border border-gray-300 px-3 py-2 text-center text-sm">
-                                  {indicator.score?.score_label || 'Not Assessed'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  )}
+                </div>
+              </div>
+            ) : state.multiPeriodData ? (
+              <div className="p-4">
+                <ExcelTable
+                  multiPeriodData={state.multiPeriodData}
+                  selectedPeriods={state.selectedPeriods}
+                  onCellEdit={handleCellEdit}
+                  onScoreChange={handleMilestoneScoreChange}
+                />
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
