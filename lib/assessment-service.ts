@@ -108,13 +108,14 @@ export interface DHIS2OrgUnit {
   id: string;
   name: string;
   level: number;
-  display_name: string;
+  displayName: string;
   parent?: {
     id: string;
     name: string;
+    displayName: string;
   };
   path?: string;
-  source: string;
+  source?: string;
   children?: DHIS2OrgUnit[];
 }
 
@@ -147,6 +148,32 @@ class AssessmentService {
     }
     
     return this.makeRequest(`/assessments/management/holistic-assessment-data/?${params}`);
+  }
+
+  async getMultiPeriodAssessmentData(params: {
+    org_unit_ids: string[];
+    periods: Period[];
+    include_scores?: boolean;
+  }): Promise<AssessmentData[]> {
+    const formattedPeriods = params.periods.map(period => ({
+      name: period.name,
+      period_type: period.periodType,
+      start_date: period.startDate,
+      end_date: period.endDate,
+      code: period.code
+    }));
+
+    return this.makeRequest('/assessments/management/multi-period-assessment-data/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        org_unit_ids: params.org_unit_ids,
+        periods: formattedPeriods,
+        include_scores: params.include_scores ?? true,
+      }),
+    });
   }
 
   async getAssessmentPeriods(): Promise<AssessmentPeriod[]> {
@@ -195,13 +222,28 @@ class AssessmentService {
 
 
   async createAssessmentWithPeriods(params: {
-    selected_periods: any[];
+    selected_periods: Period[];
     org_unit_ids: string[];
     assessment_name?: string;
   }): Promise<any> {
+    // Convert Period objects to the format expected by the backend
+    const formattedPeriods = params.selected_periods.map(period => ({
+      name: period.name,
+      period_type: period.periodType,
+      start_date: period.startDate,
+      end_date: period.endDate,
+      code: period.code
+    }));
+
     return this.makeRequest('/assessments/management/create_assessment_with_periods/', {
       method: 'POST',
-      body: JSON.stringify(params),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...params,
+        selected_periods: formattedPeriods,
+      }),
     });
   }
 
@@ -239,6 +281,26 @@ class AssessmentService {
     
     const response = await this.makeRequest(`/assessments/management/dhis2-org-units/?${params}`);
     return response.org_units || [];
+  }
+
+  async getDHIS2OrgUnitDescendants(orgUnitId: string): Promise<DHIS2OrgUnit[]> {
+    try {
+      const response = await this.makeRequest(`/dhis2-auth/org-units/${orgUnitId}/descendants/`);
+      return response.descendants || [];
+    } catch (error) {
+      console.error('Error fetching DHIS2 org unit descendants:', error);
+      return [];
+    }
+  }
+
+  async getDHIS2OrgUnitChildren(orgUnitId: string): Promise<DHIS2OrgUnit[]> {
+    try {
+      const response = await this.makeRequest(`/dhis2-auth/org-units/${orgUnitId}/children/`);
+      return response.children || [];
+    } catch (error) {
+      console.error('Error fetching DHIS2 org unit children:', error);
+      return [];
+    }
   }
 
   async triggerDataSync(syncParams: {

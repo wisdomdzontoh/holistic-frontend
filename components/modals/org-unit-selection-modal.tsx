@@ -11,10 +11,11 @@ import {
   ChevronDown,
   Building2,
   Folder,
-  Circle
+  Circle,
+  Loader2
 } from 'lucide-react';
 
-import { DHIS2OrgUnit } from '@/lib/assessment-service';
+import { DHIS2OrgUnit, assessmentService } from '@/lib/assessment-service';
 
 interface OrgUnitSelectionModalProps {
   isOpen: boolean;
@@ -27,11 +28,13 @@ interface OrgUnitSelectionModalProps {
 interface OrgUnitNode {
   id: string;
   name: string;
-  display_name: string;
+  displayName: string;
   level: number;
   children?: OrgUnitNode[];
   isExpanded?: boolean;
   isSelected?: boolean;
+  isLoading?: boolean;
+  hasLoadedChildren?: boolean;
 }
 
 export function OrgUnitSelectionModal({ 
@@ -49,6 +52,8 @@ export function OrgUnitSelectionModal({
     userSubX2Units: false
   });
 
+
+
   // Convert flat org units to tree structure
   useEffect(() => {
     if (dhis2OrgUnits.length > 0) {
@@ -63,42 +68,102 @@ export function OrgUnitSelectionModal({
   }, [selectedOrgUnits]);
 
   const buildOrgUnitTree = (orgUnits: DHIS2OrgUnit[]): OrgUnitNode[] => {
-    const unitMap = new Map<string, OrgUnitNode>();
-    const rootUnits: OrgUnitNode[] = [];
-
-    // Create nodes for all org units
-    orgUnits.forEach(unit => {
-      unitMap.set(unit.id, {
+    // Convert DHIS2OrgUnit to OrgUnitNode recursively
+    const convertToNode = (unit: DHIS2OrgUnit): OrgUnitNode => {
+      return {
         id: unit.id,
         name: unit.name,
-        display_name: unit.display_name,
+        displayName: unit.displayName,
         level: unit.level,
-        children: [],
+        children: unit.children ? unit.children.map(convertToNode) : [],
         isExpanded: false,
-        isSelected: selectedUnits.includes(unit.id)
-      });
-    });
+        isSelected: selectedUnits.includes(unit.id),
+        isLoading: false,
+        hasLoadedChildren: unit.children ? unit.children.length > 0 : false
+      };
+    };
 
-    // Build parent-child relationships
-    orgUnits.forEach(unit => {
-      const node = unitMap.get(unit.id);
-      if (node) {
-        if (unit.parent) {
-          const parentNode = unitMap.get(unit.parent.id);
-          if (parentNode) {
-            parentNode.children = parentNode.children || [];
-            parentNode.children.push(node);
-          }
-        } else {
-          rootUnits.push(node);
-        }
-      }
-    });
-
-    return rootUnits;
+    // Convert all root units
+    return orgUnits.map(convertToNode);
   };
 
-  const toggleOrgUnitExpansion = (nodeId: string) => {
+  const loadChildrenForNode = async (nodeId: string) => {
+    // Find the node and mark it as loading
+    setOrgUnitTree(prev => updateNodeLoading(prev, nodeId, true));
+
+    try {
+      // Fetch children from the API
+      const children = await assessmentService.getDHIS2OrgUnitChildren(nodeId);
+      
+      // Convert children to OrgUnitNode format
+      const childNodes: OrgUnitNode[] = children.map(child => ({
+        id: child.id,
+        name: child.name,
+        displayName: child.displayName,
+        level: child.level,
+        children: [],
+        isExpanded: false,
+        isSelected: selectedUnits.includes(child.id),
+        isLoading: false,
+        hasLoadedChildren: false
+      }));
+
+      // Update the tree with the new children
+      setOrgUnitTree(prev => updateNodeChildren(prev, nodeId, childNodes));
+    } catch (error) {
+      console.error('Error loading children for node:', nodeId, error);
+    } finally {
+      // Mark the node as no longer loading
+      setOrgUnitTree(prev => updateNodeLoading(prev, nodeId, false));
+    }
+  };
+
+  const updateNodeLoading = (nodes: OrgUnitNode[], nodeId: string, isLoading: boolean): OrgUnitNode[] => {
+    return nodes.map(node => {
+      if (node.id === nodeId) {
+        return { ...node, isLoading };
+      }
+      if (node.children) {
+        return { ...node, children: updateNodeLoading(node.children, nodeId, isLoading) };
+      }
+      return node;
+    });
+  };
+
+  const updateNodeChildren = (nodes: OrgUnitNode[], nodeId: string, children: OrgUnitNode[]): OrgUnitNode[] => {
+    return nodes.map(node => {
+      if (node.id === nodeId) {
+        return { ...node, children, hasLoadedChildren: true };
+      }
+      if (node.children) {
+        return { ...node, children: updateNodeChildren(node.children, nodeId, children) };
+      }
+      return node;
+    });
+  };
+
+  const toggleOrgUnitExpansion = async (nodeId: string) => {
+    // Find the node
+    const findNode = (nodes: OrgUnitNode[]): OrgUnitNode | null => {
+      for (const node of nodes) {
+        if (node.id === nodeId) return node;
+        if (node.children) {
+          const found = findNode(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const node = findNode(orgUnitTree);
+    if (!node) return;
+
+    // If expanding and children haven't been loaded yet, load them
+    if (!node.isExpanded && !node.hasLoadedChildren && !node.isLoading) {
+      await loadChildrenForNode(nodeId);
+    }
+
+    // Toggle expansion
     setOrgUnitTree(prev => toggleNodeExpansion(prev, nodeId));
   };
 
@@ -140,7 +205,7 @@ export function OrgUnitSelectionModal({
 
   const renderOrgUnitNode = (node: OrgUnitNode, depth: number = 0) => {
     const hasChildren = node.children && node.children.length > 0;
-    const isLeaf = !hasChildren;
+    const isLeaf = !hasChildren && !node.hasLoadedChildren;
     const indentStyle = { marginLeft: `${depth * 20}px` };
 
     return (
@@ -150,22 +215,25 @@ export function OrgUnitSelectionModal({
           style={indentStyle}
         >
           {/* Expand/Collapse button */}
-          {hasChildren && (
+          {!isLeaf && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 toggleOrgUnitExpansion(node.id);
               }}
               className="p-1 hover:bg-gray-100 rounded mr-1"
+              disabled={node.isLoading}
             >
-              {node.isExpanded ? (
+              {node.isLoading ? (
+                <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
+              ) : node.isExpanded ? (
                 <ChevronDown className="h-4 w-4 text-gray-600" />
               ) : (
                 <ChevronRight className="h-4 w-4 text-gray-600" />
               )}
             </button>
           )}
-          {!hasChildren && <div className="w-6" />}
+          {isLeaf && <div className="w-6" />}
           
           {/* Checkbox */}
           <Checkbox
@@ -183,7 +251,7 @@ export function OrgUnitSelectionModal({
           
           {/* Name */}
           <span className="text-sm text-gray-800 flex-1">
-            {node.display_name}
+            {node.displayName}
           </span>
         </div>
         
@@ -204,6 +272,24 @@ export function OrgUnitSelectionModal({
 
   const getSelectedOrgUnitNames = () => {
     return selectedUnits.map(unitId => {
+      // First try to find in the orgUnitTree (current state)
+      const findInTree = (nodes: OrgUnitNode[]): OrgUnitNode | undefined => {
+        for (const node of nodes) {
+          if (node.id === unitId) return node;
+          if (node.children) {
+            const found = findInTree(node.children);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      
+      const treeNode = findInTree(orgUnitTree);
+      if (treeNode) {
+        return treeNode.displayName || treeNode.name;
+      }
+      
+      // Fallback to searching in dhis2OrgUnits
       const findUnit = (units: DHIS2OrgUnit[]): DHIS2OrgUnit | undefined => {
         for (const unit of units) {
           if (unit.id === unitId) return unit;
@@ -216,14 +302,14 @@ export function OrgUnitSelectionModal({
       };
       
       const unit = findUnit(dhis2OrgUnits);
-      return unit ? unit.display_name : unitId;
+      return unit ? unit.displayName : unitId;
     });
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-gray-800">Organisation unit</DialogTitle>
             <Button variant="ghost" size="sm" onClick={onClose}>
@@ -232,9 +318,9 @@ export function OrgUnitSelectionModal({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-hidden flex flex-col space-y-4">
           {/* Filter Options */}
-          <div className="space-y-2">
+          <div className="flex-shrink-0 space-y-2">
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="user-org-unit"
@@ -276,7 +362,7 @@ export function OrgUnitSelectionModal({
           </div>
 
           {/* Org Unit Tree */}
-          <div className="border border-gray-200 rounded-md p-2 max-h-96 overflow-y-auto">
+          <div className="flex-1 border border-gray-200 rounded-md p-2 overflow-y-auto min-h-0">
             {orgUnitTree.length > 0 ? (
               <div className="space-y-1">
                 {orgUnitTree.map(node => renderOrgUnitNode(node))}
@@ -291,9 +377,9 @@ export function OrgUnitSelectionModal({
 
           {/* Selected Units Display */}
           {selectedUnits.length > 0 && (
-            <div className="border-t pt-4">
+            <div className="flex-shrink-0 border-t pt-4">
               <h3 className="font-medium mb-2 text-gray-800">Selected Units ({selectedUnits.length})</h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
                 {getSelectedOrgUnitNames().map((name, index) => (
                   <Badge 
                     key={selectedUnits[index]} 
@@ -315,8 +401,8 @@ export function OrgUnitSelectionModal({
           )}
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex justify-end space-x-2 pt-4 border-t bg-gray-50 px-4 py-3 -mx-6 -mb-6">
+        {/* Action Buttons - Fixed at bottom */}
+        <div className="flex-shrink-0 flex justify-end space-x-2 pt-4 border-t bg-gray-50 px-4 py-3 -mx-6 -mb-6 sticky bottom-0">
           <Button 
             variant="outline" 
             onClick={onClose} 
