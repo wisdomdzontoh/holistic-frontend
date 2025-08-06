@@ -18,6 +18,12 @@ export interface ObjectiveData {
   description: string;
   color: string;
   order: number;
+  milestone?: {
+    id: number;
+    name: string;
+    code: string;
+    color: string;
+  };
   indicators: IndicatorData[];
   score?: ObjectiveScoreData;
 }
@@ -27,6 +33,8 @@ export interface IndicatorData {
   name: string;
   dhis2_uid: string;
   description: string;
+  indicator_number: string;
+  display_order: number;
   target_value: number | null;
   target_type: string;
   weight: number;

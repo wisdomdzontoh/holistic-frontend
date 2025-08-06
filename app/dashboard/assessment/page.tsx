@@ -137,7 +137,7 @@ export default function AssessmentPage() {
         ...prev, 
         isGenerating: true, 
         error: null,
-        syncProgress: { current: 0, total: state.selectedPeriods.length, message: 'Initializing data sync...' }
+        syncProgress: { current: 0, total: state.selectedPeriods.length + 1, message: 'Initializing data sync...' }
       }));
       
       // Step 1: Trigger data sync for all selected periods
@@ -146,18 +146,23 @@ export default function AssessmentPage() {
           ...prev,
           syncProgress: { 
             current: index, 
-            total: state.selectedPeriods.length, 
+            total: state.selectedPeriods.length + 1, 
             message: `Syncing data for ${period.displayName}...` 
           }
         }));
 
-        return assessmentService.triggerDataSync({
-          sync_type: 'period',
-          org_unit_ids: state.selectedOrgUnits,
-          period_start: period.startDate,
-          period_end: period.endDate,
-          calculate_scores: true,
-        });
+        try {
+          return await assessmentService.triggerDataSync({
+            sync_type: 'period',
+            org_unit_ids: state.selectedOrgUnits,
+            period_start: period.startDate,
+            period_end: period.endDate,
+            calculate_scores: true,
+          });
+        } catch (error) {
+          console.error(`Failed to sync period ${period.displayName}:`, error);
+          throw error;
+        }
       });
 
       await Promise.all(syncPromises);
@@ -166,7 +171,7 @@ export default function AssessmentPage() {
         ...prev,
         syncProgress: { 
           current: state.selectedPeriods.length, 
-          total: state.selectedPeriods.length, 
+          total: state.selectedPeriods.length + 1, 
           message: 'Loading assessment data...' 
         }
       }));
@@ -186,6 +191,7 @@ export default function AssessmentPage() {
       }));
 
     } catch (error) {
+      console.error('Error generating report:', error);
       setState(prev => ({ 
         ...prev, 
         error: error instanceof Error ? error.message : 'Failed to generate report',

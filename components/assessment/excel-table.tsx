@@ -28,7 +28,7 @@ export default function ExcelTable({
 
   // Initialize cell data when multiPeriodData changes
   useEffect(() => {
-    if (multiPeriodData) {
+    if (multiPeriodData && multiPeriodData.length > 0) {
       const newCellData: Record<string, CellData> = {};
       
       multiPeriodData.forEach((periodData) => {
@@ -39,10 +39,14 @@ export default function ExcelTable({
               const cellKey = `${indicator.id}_${period.name}`;
               const dataValue = indicator.data_values[period.name];
               
+              // Check if this is DHIS2 data (has dhis2_uid) or manual data
+              const isDHIS2Data = !!indicator.dhis2_uid;
+              const hasValue = dataValue && dataValue.value !== null && dataValue.value !== undefined;
+              
               newCellData[cellKey] = {
-                value: dataValue?.value?.toString() || '',
-                isEditable: !indicator.dhis2_uid, // Editable if not DHIS2 data
-                isDHIS2Data: !!indicator.dhis2_uid
+                value: hasValue ? dataValue.value.toString() : '',
+                isEditable: !isDHIS2Data, // Editable if not DHIS2 data
+                isDHIS2Data: isDHIS2Data
               };
             });
             
@@ -178,7 +182,7 @@ export default function ExcelTable({
               {objective.indicators.map((indicator, indIndex) => (
                 <tr key={indicator.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 px-2 py-2 text-center font-medium">
-                    {objIndex + 1}.{indIndex + 1}
+                    {indicator.indicator_number || `${objIndex + 1}.${indIndex + 1}`}
                   </td>
                   <td className="border border-gray-300 px-2 py-2">
                     <div className="text-xs">
@@ -202,9 +206,13 @@ export default function ExcelTable({
                           />
                         ) : (
                           <div className="text-xs text-center">
-                            {cell?.value || ''}
+                            {cell?.value ? (
+                              <span>{cell.value}</span>
+                            ) : (
+                              <span className="text-gray-400">No data</span>
+                            )}
                             {cell?.isDHIS2Data && (
-                              <div className="text-xs text-blue-600">DHIS2</div>
+                              <div className="text-xs text-blue-600 mt-1">DHIS2</div>
                             )}
                           </div>
                         )}
@@ -259,7 +267,7 @@ export default function ExcelTable({
               {/* Milestone row */}
               <tr className={getRowBackground('milestone')}>
                 <td className="border border-gray-300 px-2 py-2 font-medium" colSpan={7 + selectedPeriods.length}>
-                  MS {objective.name.replace('Objective', 'Milestone')}
+                  {objective.milestone?.name || `MS ${objective.name.replace('Objective', 'Milestone')}`}
                 </td>
               </tr>
             </React.Fragment>
