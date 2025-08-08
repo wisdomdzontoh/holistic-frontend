@@ -171,7 +171,8 @@ class AssessmentService {
       code: period.code
     }));
 
-    return this.makeRequest('/assessments/management/multi-period-assessment-data/', {
+    // Use the new real-time architecture
+    return this.makeRequest('/assessments/holistic-assessment/fetch_data/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -319,9 +320,21 @@ class AssessmentService {
     indicator_uids?: string[];
     calculate_scores?: boolean;
   }): Promise<any> {
-    return this.makeRequest('/assessments/sync-logs/trigger_sync/', {
+    // Use the new real-time architecture instead of the old sync service
+    return this.makeRequest('/assessments/holistic-assessment/fetch_data/', {
       method: 'POST',
-      body: JSON.stringify(syncParams),
+      body: JSON.stringify({
+        org_unit_ids: syncParams.org_unit_ids || [],
+        periods: [{
+          name: `${syncParams.period_start} to ${syncParams.period_end}`,
+          period_type: 'custom',
+          start_date: syncParams.period_start,
+          end_date: syncParams.period_end,
+          code: syncParams.period_start
+        }],
+        indicator_uids: syncParams.indicator_uids || [],
+        include_scores: syncParams.calculate_scores || false
+      }),
     });
   }
 

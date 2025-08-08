@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Database, Edit3 } from 'lucide-react';
 import { AssessmentData, Period } from '@/lib/assessment-service';
 
 interface ExcelTableProps {
@@ -36,8 +38,10 @@ export default function ExcelTable({
           objective.indicators.forEach((indicator) => {
             // Performance trend columns (period data)
             selectedPeriods.forEach((period) => {
-              const cellKey = `${indicator.id}_${period.name}`;
-              const dataValue = indicator.data_values[period.name];
+              // Use period.code instead of period.name to match backend data keys
+              const periodKey = period.code || period.name;
+              const cellKey = `${indicator.id}_${periodKey}`;
+              const dataValue = indicator.data_values && indicator.data_values[periodKey];
               
               // Check if this is DHIS2 data (has dhis2_uid) or manual data
               const isDHIS2Data = !!indicator.dhis2_uid;
@@ -100,7 +104,7 @@ export default function ExcelTable({
     
     if (column === 'score') {
       onScoreChange(parseInt(indicatorId), value);
-    } else if (selectedPeriods.some(p => p.name === column)) {
+    } else if (selectedPeriods.some(p => (p.code || p.name) === column)) {
       onCellEdit(parseInt(indicatorId), column, value);
     }
   };
@@ -182,7 +186,34 @@ export default function ExcelTable({
               {objective.indicators.map((indicator, indIndex) => (
                 <tr key={indicator.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 px-2 py-2 text-center font-medium">
-                    {indicator.indicator_number || `${objIndex + 1}.${indIndex + 1}`}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center justify-center gap-1 cursor-help">
+                          {indicator.indicator_number || `${objIndex + 1}.${indIndex + 1}`}
+                          {indicator.dhis2_uid ? (
+                            <Database className="h-3 w-3 text-blue-600" />
+                          ) : (
+                            <Edit3 className="h-3 w-3 text-orange-600" />
+                          )}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <div className="text-sm">
+                          {indicator.dhis2_uid ? (
+                            <div>
+                              <p className="font-medium text-blue-600">DHIS2 Indicator</p>
+                              <p className="text-xs text-gray-600">UID: {indicator.dhis2_uid}</p>
+                              <p className="text-xs">Data fetched automatically from DHIS2</p>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="font-medium text-orange-600">Manual Entry</p>
+                              <p className="text-xs">Data requires manual input</p>
+                            </div>
+                          )}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   </td>
                   <td className="border border-gray-300 px-2 py-2">
                     <div className="text-xs">
@@ -192,7 +223,8 @@ export default function ExcelTable({
                   
                   {/* Performance Trend columns */}
                   {selectedPeriods.map((period) => {
-                    const cellKey = `${indicator.id}_${period.name}`;
+                    const periodKey = period.code || period.name;
+                    const cellKey = `${indicator.id}_${periodKey}`;
                     const cell = cellData[cellKey];
                     
                     return (
@@ -210,9 +242,6 @@ export default function ExcelTable({
                               <span>{cell.value}</span>
                             ) : (
                               <span className="text-gray-400">No data</span>
-                            )}
-                            {cell?.isDHIS2Data && (
-                              <div className="text-xs text-blue-600 mt-1">DHIS2</div>
                             )}
                           </div>
                         )}
