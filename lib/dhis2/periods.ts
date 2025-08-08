@@ -49,6 +49,10 @@ export class DHIS2PeriodGenerator {
         return this.generateQuarterlyPeriods(year);
       case 'monthly':
         return this.generateMonthlyPeriods(year);
+      case 'bimonthly':
+        return this.generateBimonthlyPeriods(year);
+      case 'financialYear':
+        return this.generateFinancialYearPeriods(year);
       case 'weekly':
         return this.generateWeeklyPeriods(year);
       default:
@@ -123,6 +127,43 @@ export class DHIS2PeriodGenerator {
         code: `${year}${monthNum}`
       };
     });
+  }
+
+  static generateBimonthlyPeriods(year: number): Period[] {
+    const bimonthly = [
+      { id: 'B1', startMonth: 0, endMonth: 1, name: 'Jan-Feb' },
+      { id: 'B2', startMonth: 2, endMonth: 3, name: 'Mar-Apr' },
+      { id: 'B3', startMonth: 4, endMonth: 5, name: 'May-Jun' },
+      { id: 'B4', startMonth: 6, endMonth: 7, name: 'Jul-Aug' },
+      { id: 'B5', startMonth: 8, endMonth: 9, name: 'Sep-Oct' },
+      { id: 'B6', startMonth: 10, endMonth: 11, name: 'Nov-Dec' }
+    ];
+
+    return bimonthly.map(b => ({
+      id: `${year}${b.id}`,
+      name: `${year} ${b.name}`,
+      displayName: `${year} ${b.name}`,
+      startDate: `${year}-${String(b.startMonth + 1).padStart(2, '0')}-01`,
+      endDate: this.getLastDayOfMonth(year, b.endMonth),
+      periodType: 'bimonthly',
+      code: `${year}B${b.id.substring(1)}`
+    }));
+  }
+
+  static generateFinancialYearPeriods(year: number): Period[] {
+    // Financial year starting from November (previous year to current year)
+    const financialYearStart = year - 1;
+    const financialYearEnd = year;
+    
+    return [{
+      id: `FY${financialYearStart}-${financialYearEnd}`,
+      name: `FY ${financialYearStart}-${financialYearEnd}`,
+      displayName: `Financial Year ${financialYearStart}-${financialYearEnd}`,
+      startDate: `${financialYearStart}-11-01`,
+      endDate: `${financialYearEnd}-10-31`,
+      periodType: 'financialYear',
+      code: `FY${financialYearStart}${financialYearEnd}`
+    }];
   }
 
   static generateWeeklyPeriods(year: number): Period[] {

@@ -412,7 +412,7 @@ export function OrgUnitSelectionModal({
           </Button>
           <Button 
             onClick={handleUpdate}
-            className="text-white" 
+            className="text-white hover:opacity-90" 
             style={{ backgroundColor: '#265380' }}
           >
             Update

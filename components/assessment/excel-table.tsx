@@ -48,7 +48,7 @@ export default function ExcelTable({
               const hasValue = dataValue && dataValue.value !== null && dataValue.value !== undefined;
               
               newCellData[cellKey] = {
-                value: hasValue ? dataValue.value.toString() : '',
+                value: hasValue && dataValue.value !== null ? dataValue.value.toString() : '',
                 isEditable: !isDHIS2Data, // Editable if not DHIS2 data
                 isDHIS2Data: isDHIS2Data
               };

@@ -85,15 +85,8 @@ export interface AssessmentPeriod {
   is_current: boolean;
 }
 
-export interface Period {
-  id: string;
-  name: string;
-  displayName: string;
-  startDate: string;
-  endDate: string;
-  periodType: string;
-  code: string;
-}
+import type { Period, PeriodType } from './dhis2/periods';
+export type { Period, PeriodType } from './dhis2/periods';
 
 export interface DHIS2RelativePeriod {
   id: string;
@@ -435,7 +428,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: y.toString(),
           startDate: `${y}-01-01`,
           endDate: `${y}-12-31`,
-          periodType: 'Yearly',
+          periodType: 'yearly',
           code: y.toString()
         });
       }
@@ -460,7 +453,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: `${baseYear} ${q.name}`,
           startDate,
           endDate,
-          periodType: 'Quarterly',
+          periodType: 'quarterly',
           code: `${baseYear}${q.id}`
         });
       });
@@ -483,7 +476,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: `${baseYear} ${s.name}`,
           startDate,
           endDate,
-          periodType: 'SixMonthly',
+          periodType: 'sixmonthly',
           code: `${baseYear}${s.id}`
         });
       });
@@ -507,7 +500,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: `${baseYear} ${s.name}`,
           startDate,
           endDate,
-          periodType: 'SixMonthlyApril',
+          periodType: 'sixmonthly',
           code: `${baseYear}${s.id}`
         });
       });
@@ -531,7 +524,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: `${baseYear} ${s.name}`,
           startDate,
           endDate,
-          periodType: 'SixMonthlyNov',
+          periodType: 'sixmonthly',
           code: `${baseYear}${s.id}`
         });
       });
@@ -551,7 +544,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: `${baseYear} BiMonthly ${i}`,
           startDate,
           endDate,
-          periodType: 'BiMonthly',
+          periodType: 'bimonthly',
           code: `${baseYear}${i.toString().padStart(2, '0')}`
         });
       }
@@ -569,7 +562,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
           displayName: `${baseYear} Monthly ${month}`,
           startDate,
           endDate,
-          periodType: 'Monthly',
+          periodType: 'monthly',
           code: `${baseYear}${month.toString().padStart(2, '0')}`
         });
       }

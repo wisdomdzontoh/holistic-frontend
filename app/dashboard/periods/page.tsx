@@ -19,7 +19,7 @@ import {
   Settings,
   Play,
   Pause,
-  Stop,
+  Square,
   Download
 } from 'lucide-react';
 
