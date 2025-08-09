@@ -14,6 +14,7 @@ interface SavedItem {
   org_unit_id: string;
   org_unit_name: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export function OpenAssessmentModal({

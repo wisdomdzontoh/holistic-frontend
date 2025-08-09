@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Database, Edit3 } from 'lucide-react';
 import { AssessmentData, Period } from '@/lib/assessment-service';
 
@@ -128,20 +129,14 @@ export default function ExcelTable({
   };
 
   const handleMilestoneScoreChange = (objectiveId: number, value: string) => {
-    // Validate score input (-2, -1, 0, 1, 2)
-    const validScores = ['-2', '-1', '0', '1', '2'];
-    const numericValue = value.replace(/\.00$/, ''); // Remove .00 suffix for validation
+    const formattedValue = `${value}.00`;
+    setMilestoneScores(prev => ({
+      ...prev,
+      [objectiveId]: formattedValue
+    }));
     
-    if (validScores.includes(numericValue)) {
-      const formattedValue = `${numericValue}.00`;
-      setMilestoneScores(prev => ({
-        ...prev,
-        [objectiveId]: formattedValue
-      }));
-      
-      if (onMilestoneScoreChange) {
-        onMilestoneScoreChange(objectiveId, formattedValue);
-      }
+    if (onMilestoneScoreChange) {
+      onMilestoneScoreChange(objectiveId, formattedValue);
     }
   };
 
@@ -149,10 +144,11 @@ export default function ExcelTable({
     const numScore = parseFloat(score);
     if (isNaN(numScore)) return '#6c757d';
     
-    if (numScore >= 1) return '#28a745'; // Green
+    if (numScore === 2) return '#116045'; // Green
+    if (numScore === 1) return '#2AA63E'; // Light-green
     if (numScore >= 0) return '#ffc107'; // Yellow
-    if (numScore >= -1) return '#fd7e14'; // Orange
-    return '#dc3545'; // Red
+    if (numScore >= -1) return '#FF6467'; // light-red
+    return '#C11007'; // Deep-red
   };
 
   const getRowBackground = (type: string) => {
@@ -287,6 +283,7 @@ export default function ExcelTable({
                       <td key={period.name} className="border border-gray-300 px-1 py-1">
                         {cell?.isEditable ? (
                           <Input
+                            inputMode="decimal"
                             value={cell?.value || ''}
                             onChange={(e) => handleCellChange(cellKey, e.target.value)}
                             className="h-6 text-xs border-0 p-1 focus:ring-1 focus:ring-blue-500"
@@ -328,15 +325,24 @@ export default function ExcelTable({
                   
                   {/* Assessed score column */}
                   <td className="border border-gray-300 px-1 py-1">
-                    <Input
-                      value={cellData[`${indicator.id}_score`]?.value || '-2.00'}
-                      onChange={(e) => handleCellChange(`${indicator.id}_score`, e.target.value)}
-                      className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500"
-                      style={{ 
+                    <Select
+                      value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
+                      onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
+                    >
+                      <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500" style={{ 
                         backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
                         color: 'white'
-                      }}
-                    />
+                      }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="-2">-2</SelectItem>
+                        <SelectItem value="-1">-1</SelectItem>
+                        <SelectItem value="0">0</SelectItem>
+                        <SelectItem value="1">1</SelectItem>
+                        <SelectItem value="2">2</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </td>
                   
                   {/* Remarks column */}
@@ -390,16 +396,24 @@ export default function ExcelTable({
                 
                 {/* Milestone score input - properly aligned */}
                 <td className="border border-gray-300 px-1 py-1">
-                  <Input
-                    value={milestoneScores[objective.id] || '-2.00'}
-                    onChange={(e) => handleMilestoneScoreChange(objective.id, e.target.value)}
-                    className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500"
-                    style={{ 
+                  <Select
+                    value={milestoneScores[objective.id]?.replace('.00', '') || '-2'}
+                    onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
+                  >
+                    <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500" style={{ 
                       backgroundColor: getScoreColor(milestoneScores[objective.id] || '-2.00'),
                       color: 'white'
-                    }}
-                    placeholder="-2.00"
-                  />
+                    }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="-2">-2</SelectItem>
+                      <SelectItem value="-1">-1</SelectItem>
+                      <SelectItem value="0">0</SelectItem>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="2">2</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </td>
                 
                 {/* Remarks column for milestone - properly aligned */}

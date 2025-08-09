@@ -72,6 +72,7 @@ export default function AssessmentPage() {
   
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isOrgUnitModalOpen, setIsOrgUnitModalOpen] = useState(false);
+  const [indicatorSourceFilter, setIndicatorSourceFilter] = useState<'all'|'dhis2'|'manual'>('all');
   const [isOpenModal, setIsOpenModal] = useState(false);
   const [isNameModal, setIsNameModal] = useState(false);
   const [pendingSaveName, setPendingSaveName] = useState<string | null>(null);
@@ -1280,19 +1281,36 @@ export default function AssessmentPage() {
                 </div>
               </div>
 
+              {/* Divider */}
+              <span className="hidden md:inline-block h-6 border-l border-gray-200 mx-1" />
+
+              {/* Source filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Source:</span>
+                <Button size="sm" variant={indicatorSourceFilter==='all'?'default':'outline'}
+                  className={indicatorSourceFilter==='all'? 'bg-blue-600 text-white':'border-gray-300 text-gray-700'}
+                  onClick={()=>setIndicatorSourceFilter('all')}>All</Button>
+                <Button size="sm" variant={indicatorSourceFilter==='dhis2'?'default':'outline'}
+                  className={indicatorSourceFilter==='dhis2'? 'bg-blue-600 text-white':'border-gray-300 text-gray-700'}
+                  onClick={()=>setIndicatorSourceFilter('dhis2')}>DHIS2</Button>
+                <Button size="sm" variant={indicatorSourceFilter==='manual'?'default':'outline'}
+                  className={indicatorSourceFilter==='manual'? 'bg-blue-600 text-white':'border-gray-300 text-gray-700'}
+                  onClick={()=>setIndicatorSourceFilter('manual')}>Manual</Button>
+              </div>
+
               {/* Right side: status */}
               <div className="ml-auto text-xs text-gray-500 flex items-center gap-2">
                 {state.loading && (
                   <span className="flex items-center"><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Loading…</span>
                 )}
-                {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector && (
+                {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector_score && (
                   <span className="flex items-center gap-1">
                     <span>Sector:</span>
                     <span
                       className="px-2 py-1 rounded text-white"
-                      style={{ backgroundColor: state.multiPeriodData[0].sector.score_color || '#6c757d' }}
+                      style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
                     >
-                      {typeof state.multiPeriodData[0].sector.overall_score === 'number' ? state.multiPeriodData[0].sector.overall_score.toFixed(2) : '-'}
+                      {typeof state.multiPeriodData[0].sector_score.overall_score === 'number' ? state.multiPeriodData[0].sector_score.overall_score.toFixed(2) : '-'}
                     </span>
                   </span>
                 )}
@@ -1362,13 +1380,28 @@ export default function AssessmentPage() {
               </div>
             ) : state.multiPeriodData ? (
               <div className="p-4">
-                <ExcelTable
-                  multiPeriodData={state.multiPeriodData}
-                  selectedPeriods={state.selectedPeriods}
-                  onCellEdit={handleCellEdit}
-                  onScoreChange={handleScoreChange}
-                  onMilestoneScoreChange={handleMilestoneScoreChange}
-                />
+                {(() => {
+                  const filtered = state.multiPeriodData.map(pd => ({
+                    ...pd,
+                    objectives: pd.objectives.map(obj => ({
+                      ...obj,
+                      indicators: obj.indicators.filter((ind:any) => {
+                        if (indicatorSourceFilter==='all') return true;
+                        const isDHIS2 = Boolean(ind.dhis2_uid);
+                        return indicatorSourceFilter==='dhis2' ? isDHIS2 : !isDHIS2;
+                      })
+                    }))
+                  }));
+                  return (
+                    <ExcelTable
+                      multiPeriodData={filtered}
+                      selectedPeriods={state.selectedPeriods}
+                      onCellEdit={handleCellEdit}
+                      onScoreChange={handleScoreChange}
+                      onMilestoneScoreChange={handleMilestoneScoreChange}
+                    />
+                  );
+                })()}
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500">
