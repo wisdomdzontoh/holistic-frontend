@@ -411,6 +411,36 @@ class AssessmentService {
     return response;
   }
 
+  async updateAssessment(params: {
+    assessment_id: string;
+    name: string;
+    org_unit_id: string;
+    org_unit_name: string;
+    periods: string[];
+    indicator_data: Record<string, any>;
+    calculated_scores?: Record<string, any>;
+    user_notes?: string;
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    const response = await this.makeRequest(`/assessments/holistic/update_assessment/${params.assessment_id}/`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: params.name,
+        org_unit_id: params.org_unit_id,
+        org_unit_name: params.org_unit_name,
+        periods: params.periods,
+        indicator_data: params.indicator_data,
+        calculated_scores: params.calculated_scores,
+        user_notes: params.user_notes,
+        metadata: params.metadata,
+      }),
+    });
+    return response;
+  }
+
   async getSavedAssessments(params: {
     org_unit_id?: string;
     page?: number;

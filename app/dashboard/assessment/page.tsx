@@ -52,6 +52,8 @@ interface AssessmentState {
     total: number;
     message: string;
   } | null;
+  currentAssessmentId?: string; // Track if we're editing an existing assessment
+  currentAssessmentName?: string; // Track the current assessment name
 }
 
 export default function AssessmentPage() {
@@ -155,6 +157,8 @@ export default function AssessmentPage() {
         ...prev, 
         isGenerating: true, 
         error: null,
+        currentAssessmentId: undefined, // Clear current assessment when starting new
+        currentAssessmentName: undefined, // Clear current assessment name when starting new
         syncProgress: { current: 0, total: state.selectedPeriods.length + 1, message: 'Initializing data sync...' }
       }));
       
@@ -587,15 +591,37 @@ export default function AssessmentPage() {
         }
       };
 
-      const result = await assessmentService.saveAssessment(saveData);
+      let result;
+      if (state.currentAssessmentId) {
+        // Update existing assessment
+        result = await assessmentService.updateAssessment({
+          assessment_id: state.currentAssessmentId,
+          ...saveData
+        });
+        toast.success('Assessment updated successfully');
+      } else {
+        // Save new assessment
+        result = await assessmentService.saveAssessment(saveData);
+        toast.success('Assessment saved successfully');
+        
+        // Set the current assessment ID and name after successful save
+        if (result?.assessment_id) {
+          setState(prev => ({ 
+            ...prev, 
+            currentAssessmentId: result.assessment_id,
+            currentAssessmentName: finalName,
+            loading: false,
+            error: null
+          }));
+          return; // Exit early since we already updated state
+        }
+      }
       
       setState(prev => ({ 
         ...prev, 
         loading: false,
         error: null
       }));
-
-      toast.success('Assessment saved');
       
     } catch (error) {
       console.error('Error saving assessment:', error);
@@ -610,7 +636,13 @@ export default function AssessmentPage() {
   };
 
   const handleSaveAssessment = () => {
-    const defaultName = `Assessment_${new Date().toISOString().split('T')[0]}`;
+    let defaultName;
+    if (state.currentAssessmentId && state.currentAssessmentName) {
+      // For updates, use the stored assessment name
+      defaultName = state.currentAssessmentName;
+    } else {
+      defaultName = `Assessment_${new Date().toISOString().split('T')[0]}`;
+    }
     setPendingSaveName(defaultName);
     setIsNameModal(true);
   };
@@ -740,6 +772,8 @@ export default function AssessmentPage() {
         selectedOrgUnits: saved?.org_unit_id ? [saved.org_unit_id] : prev.selectedOrgUnits,
         selectedPeriods: loadedPeriods.length ? loadedPeriods : prev.selectedPeriods,
         multiPeriodData: multi,
+        currentAssessmentId: assessmentId, // Set the current assessment ID for updates
+        currentAssessmentName: saved?.name || '', // Store the assessment name
         loading: false,
         error: null,
       }));
@@ -1054,6 +1088,14 @@ export default function AssessmentPage() {
                 </Tooltip>
               )}
               
+              {/* Edit mode indicator */}
+              {state.currentAssessmentId && (
+                <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Editing Assessment
+                </Badge>
+              )}
+              
               <div className="relative group">
                 <Button 
                   variant="outline" 
@@ -1074,7 +1116,7 @@ export default function AssessmentPage() {
                        onClick={handleSaveAssessment}
                       disabled={!state.multiPeriodData || state.multiPeriodData.length === 0}
                     >
-                      Save Assessment
+                      {state.currentAssessmentId ? 'Update Assessment' : 'Save Assessment'}
                     </button>
                     <div className="border-t border-gray-200 my-1"></div>
                     <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={exportToCSV}>
