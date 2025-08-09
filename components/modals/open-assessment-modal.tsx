@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { assessmentService } from '@/lib/assessment-service';
-import { Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface SavedItem {
   id: string;
@@ -27,66 +28,117 @@ export function OpenAssessmentModal({
   orgUnitId?: string;
 }) {
   const [items, setItems] = useState<SavedItem[]>([]);
+  // Debounced search
+  const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{open:boolean,id?:string}>({open:false});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [count, setCount] = useState(0);
+  const [ordering, setOrdering] = useState<'name'|'-name'|'created_at'|'-created_at'>('-created_at');
+  const [owner, setOwner] = useState<'mine'|'all'>('mine');
+  const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await assessmentService.getSavedAssessments({ org_unit_id: orgUnitId });
-        const list = res?.assessments || [];
-        setItems(list);
-      } catch (e) {
-        console.error('Failed to load saved assessments', e);
-      } finally {
-        setLoading(false);
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Cancel in-flight request for snappy refresh
+      if (abortRef.current) abortRef.current.abort();
+      abortRef.current = new AbortController();
+      const res = await assessmentService.getSavedAssessments({ org_unit_id: orgUnitId, page, size: pageSize, search: filter, ordering, owner }, abortRef.current.signal);
+      setItems(res.results || []);
+      setCount(res.count || 0);
+      // If current page is now out of range after a change (e.g. deletion/filter), snap to last page
+      const totalPagesNow = Math.max(1, Math.ceil((res.count || 0) / pageSize));
+      if (page > totalPagesNow) {
+        setPage(totalPagesNow);
       }
-    })();
-  }, [isOpen, orgUnitId]);
+    } catch (e) {
+      if ((e as any)?.name !== 'AbortError') {
+        console.error('Failed to load saved assessments', e);
+        toast.error('Failed to load saved assessments');
+      }
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const filtered = items.filter(i => i.name.toLowerCase().includes(filter.toLowerCase()));
-  useEffect(()=>{ setPage(1); }, [filter, items.length]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const startIdx = (page - 1) * pageSize;
-  const view = filtered.slice(startIdx, startIdx + pageSize);
+  // Debounce search input -> updates filter
+  useEffect(() => {
+    const t = setTimeout(() => setFilter(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // Reset defaults on open
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedId(null);
+      // Always fetch fresh when opening
+      fetchData();
+    } else {
+      // optional: keep filters across opens; comment out to reset
+      // setSearchTerm(''); setFilter(''); setPage(1); setOrdering('-created_at'); setOwner('mine');
+    }
+  }, [isOpen]);
+
+  // Fetch on parameter changes while open
+  useEffect(() => {
+    if (isOpen) fetchData();
+  }, [orgUnitId, page, pageSize, filter, ordering, owner]);
+
+  useEffect(()=>{ setPage(1); }, [filter, pageSize, ordering, owner]);
+  const totalPages = Math.max(1, Math.ceil((count || 0) / pageSize));
+  const view = items;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl p-0 overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Open saved assessment</DialogTitle>
+          <DialogTitle className="px-6 pt-4">Open saved assessment</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-3 px-6 pb-4">
           <div className="flex items-center gap-2">
-            <Input placeholder="Filter by name" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <Input placeholder="Search by name or org unit" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <select className="border rounded px-2 py-1" value={ordering} onChange={(e)=>setOrdering(e.target.value as any)}>
+              <option value="-created_at">Newest</option>
+              <option value="created_at">Oldest</option>
+              <option value="name">Name (A-Z)</option>
+              <option value="-name">Name (Z-A)</option>
+            </select>
+            <select className="border rounded px-2 py-1" value={owner} onChange={(e)=>setOwner(e.target.value as any)}>
+              <option value="mine">My assessments</option>
+              <option value="all">All assessments</option>
+            </select>
+            <Button variant="outline" onClick={()=>fetchData()}>
+              <ArrowUpDown className="h-4 w-4 mr-1" /> Refresh
+            </Button>
           </div>
-          <div className="max-h-80 overflow-auto border rounded">
+          <div className="max-h-[420px] overflow-auto border rounded">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0">
                 <tr>
                   <th className="text-left px-3 py-2">Name</th>
                   <th className="text-left px-3 py-2">Org unit</th>
                   <th className="text-left px-3 py-2">Created</th>
+                  <th className="text-left px-3 py-2">Last edited</th>
                   <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td className="px-3 py-3" colSpan={4}>Loading...</td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td className="px-3 py-3" colSpan={4}>No saved assessments</td></tr>
+                  <tr><td className="px-3 py-3" colSpan={5}>Loading...</td></tr>
+                ) : view.length === 0 ? (
+                  <tr><td className="px-3 py-3" colSpan={5}>No saved assessments</td></tr>
                 ) : (
                   view.map(item => (
                     <tr key={item.id} className={`cursor-pointer hover:bg-gray-50 ${selectedId===item.id?'bg-blue-50':''}`} onClick={() => setSelectedId(item.id)}>
-                      <td className="px-3 py-2">{item.name}</td>
+                      <td className="px-3 py-2 font-medium">{item.name}</td>
                       <td className="px-3 py-2">{item.org_unit_name}</td>
                       <td className="px-3 py-2">{new Date(item.created_at).toLocaleString()}</td>
+                      <td className="px-3 py-2">{item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}</td>
                       <td className="px-3 py-2">
                         <button
                           title="Delete"
@@ -115,7 +167,7 @@ export function OpenAssessmentModal({
                 <option value={20}>20</option>
                 <option value={50}>50</option>
               </select>
-              <span className="text-gray-500">{filtered.length} total</span>
+              <span className="text-gray-500">{count} total</span>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -162,11 +214,8 @@ export function OpenAssessmentModal({
           onConfirm={async ()=>{
             if (!confirmDelete.id) return;
             await assessmentService.deleteAssessment({ assessment_id: confirmDelete.id });
-            // refresh list
-            try {
-              const res = await assessmentService.getSavedAssessments({ org_unit_id: orgUnitId });
-              setItems(res?.assessments || []);
-            } catch {}
+            await fetchData();
+            toast.success('Assessment deleted');
           }}
         />
       </DialogContent>

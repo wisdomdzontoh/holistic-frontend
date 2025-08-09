@@ -11,6 +11,8 @@ import { OpenAssessmentModal, NameAssessmentModal, ConfirmModal } from '@/compon
 import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-modal';
 import { assessmentService, AssessmentData, AssessmentPeriod, OrgUnit, Period, DHIS2OrgUnit } from '@/lib/assessment-service';
 import ExcelTable from '@/components/assessment/excel-table';
+import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Calendar, 
   Download, 
@@ -74,10 +76,18 @@ export default function AssessmentPage() {
   const [isNameModal, setIsNameModal] = useState(false);
   const [pendingSaveName, setPendingSaveName] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{open:boolean,title:string,message:string,confirmText?:string,onConfirm?:()=>void}>({open:false,title:'',message:''});
+  const [scoringRules, setScoringRules] = useState<any[]>([]);
 
   // Load assessment data on component mount
   useEffect(() => {
     loadAssessmentData();
+    // prefetch scoring rules for advanced logic (will be used in a follow-up step)
+    (async () => {
+      try {
+        const rules = await assessmentService.getScoringRules();
+        setScoringRules(rules || []);
+      } catch {}
+    })();
   }, []);
 
   const loadAssessmentData = async () => {
@@ -98,6 +108,7 @@ export default function AssessmentPage() {
         dhis2OrgUnitsFlat: dhis2OrgUnitsFlat || [],
         loading: false 
       }));
+      toast.success('App context loaded');
     } catch (error) {
       console.error('Error loading assessment data:', error);
       setState(prev => ({ 
@@ -105,6 +116,7 @@ export default function AssessmentPage() {
         error: error instanceof Error ? error.message : 'Failed to load assessment data',
         loading: false 
       }));
+      toast.error('Failed to load app context');
     }
   };
 
@@ -182,11 +194,14 @@ export default function AssessmentPage() {
       }));
 
       // Step 2: Load multi-period assessment data
-      const assessmentData = await assessmentService.getMultiPeriodAssessmentData({
+      let assessmentData = await assessmentService.getMultiPeriodAssessmentData({
         org_unit_ids: state.selectedOrgUnits,
         periods: state.selectedPeriods,
         include_scores: true,
       });
+
+      // Compute indicator scores client-side for instant feedback then roll up
+      assessmentData = withRollups(computeAllIndicatorScores(assessmentData, state.selectedPeriods));
 
       setState(prev => ({ 
         ...prev, 
@@ -211,7 +226,7 @@ export default function AssessmentPage() {
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
       
-      const updatedData = prev.multiPeriodData.map(periodData => ({
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
         ...periodData,
         objectives: periodData.objectives.map(objective => ({
           ...objective,
@@ -234,6 +249,7 @@ export default function AssessmentPage() {
         }))
       })) as AssessmentData[];
       
+      const updatedData = withRollups(updatedDataRaw);
       return { ...prev, multiPeriodData: updatedData };
     });
   };
@@ -243,7 +259,7 @@ export default function AssessmentPage() {
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
       
-      const updatedData = prev.multiPeriodData.map(periodData => ({
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
         ...periodData,
         objectives: periodData.objectives.map(objective => ({
           ...objective,
@@ -269,6 +285,7 @@ export default function AssessmentPage() {
         }))
       })) as AssessmentData[];
       
+      const updatedData = withRollups(updatedDataRaw);
       return { ...prev, multiPeriodData: updatedData };
     });
   };
@@ -278,7 +295,7 @@ export default function AssessmentPage() {
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
       
-      const updatedData = prev.multiPeriodData.map(periodData => ({
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
         ...periodData,
         objectives: periodData.objectives.map(objective => {
           if (objective.id === objectiveId && objective.milestone) {
@@ -299,7 +316,8 @@ export default function AssessmentPage() {
           return objective;
         })
       })) as AssessmentData[];
-      
+
+      const updatedData = withRollups(updatedDataRaw);
       return { ...prev, multiPeriodData: updatedData };
     });
   };
@@ -317,6 +335,163 @@ export default function AssessmentPage() {
     if (score === 0) return 'bg-yellow-100 text-yellow-800';
     if (score === -1) return 'bg-orange-100 text-orange-800';
     return 'bg-red-100 text-red-800';
+  };
+
+  const getScoreHex = (score: number | undefined) => {
+    if (score === undefined) return '#6c757d';
+    if (score >= 1) return '#28a745'; // green
+    if (score === 0) return '#ffc107'; // yellow
+    if (score === -1) return '#fd7e14'; // orange
+    return '#dc3545'; // red
+  };
+
+  const median = (values: number[]) => {
+    if (!values.length) return undefined as unknown as number;
+    const sorted = [...values].sort((a,b)=>a-b);
+    const mid = Math.floor(sorted.length/2);
+    if (sorted.length % 2) return sorted[mid];
+    return (sorted[mid-1] + sorted[mid]) / 2;
+  };
+
+  const withRollups = (data: AssessmentData[]): AssessmentData[] => {
+    return data.map(periodData => {
+      const newObjectives = periodData.objectives.map(obj => {
+        const scoredPairs = obj.indicators
+          .map(ind => ({ s: (ind as any).score?.score as number | undefined, w: Number((ind as any).weight || 1) }))
+          .filter(p => typeof p.s === 'number');
+        const total = obj.indicators.length;
+        const scored = scoredPairs.length;
+        const sumW = scoredPairs.reduce((a, b) => a + (isNaN(b.w) ? 0 : b.w), 0);
+        const final = scored && sumW > 0 ? (scoredPairs.reduce((a, b) => a + (b.s as number) * (isNaN(b.w) ? 0 : b.w), 0) / sumW) : undefined;
+        const color = final === undefined ? '#6c757d' : getScoreHex(final);
+        const label = final === undefined ? 'Unknown' : getScoreLabel(final);
+        return {
+          ...obj,
+          score: final === undefined ? undefined : {
+            final_score: final,
+            score_color: color,
+            score_label: label,
+            total_indicators: total,
+            scored_indicators: scored,
+          }
+        };
+      });
+      const objectivePairs = newObjectives.map(o => ({ s: (o as any).score?.final_score as number | undefined, w: 1 }));
+      const validPairs = objectivePairs.filter(p => typeof p.s === 'number');
+      const overall = validPairs.length ? (validPairs.reduce((a,b)=> a + (b.s as number) * b.w, 0) / validPairs.reduce((a,b)=> a + b.w, 0)) : undefined;
+      return {
+        ...periodData,
+        objectives: newObjectives,
+        sector_score: overall === undefined ? undefined : {
+          overall_score: overall,
+          score_color: getScoreHex(overall),
+          score_label: getScoreLabel(overall),
+          total_objectives: newObjectives.length,
+          scored_objectives: validPairs.length
+        }
+      } as AssessmentData;
+    });
+  };
+
+  const computeIndicatorScore = (indicator: any, periods: Period[]) => {
+    if (indicator?.score?.is_manual_override) return indicator; // respect manual override
+    const last = periods[periods.length - 1]?.name;
+    if (!last) return indicator;
+    const currVal = indicator?.data_values?.[last]?.value;
+    const target = indicator?.target_value;
+    if (currVal === undefined || currVal === null) return indicator;
+
+    // Compute change % and gap % for table/export
+    const prevName = periods.length > 1 ? periods[periods.length - 2]?.name : undefined;
+    const prevVal = prevName ? indicator?.data_values?.[prevName]?.value : undefined;
+    const changePct = (function(){
+      if (prevVal === undefined || prevVal === null || Number(prevVal) === 0) return undefined as unknown as number;
+      const change = ((Number(currVal) - Number(prevVal)) / Math.abs(Number(prevVal))) * 100;
+      return isFinite(change) ? Number(change.toFixed(1)) : undefined as unknown as number;
+    })();
+    const gapPct = (function(){
+      if (target === null || target === undefined || Number(target) === 0) return undefined as unknown as number;
+      const targetType = (indicator?.target_type || 'increase').toLowerCase();
+      const ratio = Number(currVal) / Number(target);
+      const gap = targetType === 'increase' ? (ratio - 1) * 100 : (1 - ratio) * 100;
+      return isFinite(gap) ? Number(gap.toFixed(1)) : undefined as unknown as number;
+    })();
+
+    const findRuleScore = () => {
+      if (!scoringRules || !Array.isArray(scoringRules) || scoringRules.length === 0) return undefined as unknown as number;
+      const prevName = periods.length > 1 ? periods[periods.length - 2]?.name : undefined;
+      const prevVal = prevName ? indicator?.data_values?.[prevName]?.value : undefined;
+      const targetType = (indicator?.target_type || 'increase').toLowerCase();
+
+      const calcGap = () => {
+        if (target === null || target === undefined || Number(target) === 0) return undefined as unknown as number;
+        const ratio = Number(currVal) / Number(target);
+        return targetType === 'increase' ? (ratio - 1) * 100 : (1 - ratio) * 100;
+      };
+      const calcChange = () => {
+        if (prevVal === undefined || prevVal === null || Number(prevVal) === 0) return undefined as unknown as number;
+        return ((Number(currVal) - Number(prevVal)) / Math.abs(Number(prevVal))) * 100;
+      };
+
+      const absoluteValue = Number(currVal);
+      const gapPct = calcGap();
+      const changePct = calcChange();
+
+      const pick = (perfType: string, metric: number | undefined) => {
+        if (metric === undefined || isNaN(metric as number)) return undefined as unknown as number;
+        const pool = scoringRules.filter((r: any) => (r.performance_type || r.performanceType) === perfType);
+        if (pool.length === 0) return undefined as unknown as number;
+        pool.sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
+        const matched = pool.find((r: any) => {
+          const min = r.min_value ?? r.minValue; const max = r.max_value ?? r.maxValue;
+          const minOk = min === null || min === undefined || metric >= Number(min);
+          const maxOk = max === null || max === undefined || metric <= Number(max);
+          return minOk && maxOk;
+        });
+        return matched ? Number(matched.score) : undefined;
+      };
+
+      return (
+        pick('gap', gapPct) ?? pick('change', changePct) ?? pick('absolute', absoluteValue)
+      ) as number;
+    };
+
+    let derivedScore = findRuleScore();
+    if (derivedScore === undefined || isNaN(derivedScore as number)) {
+      if (target === null || target === undefined) return indicator;
+      const type = (indicator?.target_type || 'increase').toLowerCase();
+      if (type === 'increase') {
+        const ratio = Number(target) === 0 ? 0 : Number(currVal) / Number(target);
+        derivedScore = ratio >= 1.05 ? 2 : ratio >= 1.0 ? 1 : ratio >= 0.9 ? 0 : ratio >= 0.7 ? -1 : -2;
+      } else {
+        const ratio = Number(target) === 0 ? 0 : Number(currVal) / Number(target);
+        derivedScore = ratio <= 0.95 ? 2 : ratio <= 1.0 ? 1 : ratio <= 1.1 ? 0 : ratio <= 1.3 ? -1 : -2;
+      }
+    }
+    const scoreColor = getScoreColor(derivedScore as number);
+    const scoreLabel = getScoreLabel(derivedScore as number);
+    return {
+      ...indicator,
+      score: {
+        ...(indicator.score || {}),
+        score: derivedScore as number,
+        score_color: scoreColor,
+        score_label: scoreLabel,
+        is_manual_override: false,
+        percent_change: changePct,
+        target_gap: gapPct,
+      }
+    };
+  };
+
+  const computeAllIndicatorScores = (data: AssessmentData[], periods: Period[]) => {
+    return data.map(pd => ({
+      ...pd,
+      objectives: pd.objectives.map(obj => ({
+        ...obj,
+        indicators: obj.indicators.map(ind => computeIndicatorScore(ind, periods))
+      }))
+    })) as AssessmentData[];
   };
 
   const getRowBackground = (type: string) => {
@@ -361,7 +536,12 @@ export default function AssessmentPage() {
               dhis2_uid: indicator.dhis2_uid,
               target_value: indicator.target_value,
               data_values: indicator.data_values,
-              score: indicator.score
+              score: indicator.score,
+              // persist structure to reconstruct on open
+              objective_id: objective.id,
+              objective_name: objective.name,
+              indicator_number: indicator.indicator_number,
+              display_order: indicator.display_order
             };
           });
         });
@@ -391,6 +571,9 @@ export default function AssessmentPage() {
           objectives: state.multiPeriodData[0]?.objectives.map(obj => ({
             id: obj.id,
             name: obj.name,
+            code: (obj as any).code || '',
+            color: (obj as any).color || '',
+            order: (obj as any).order || 0,
             score: obj.score
           })) || [],
           sector_score: state.multiPeriodData[0]?.sector_score
@@ -411,16 +594,17 @@ export default function AssessmentPage() {
         error: null
       }));
 
-      // Show success message
-      setConfirmState({open:true,title:'Saved',message:'Assessment saved successfully!',confirmText:'OK'});
+      toast.success('Assessment saved');
       
     } catch (error) {
       console.error('Error saving assessment:', error);
+      toast.error('Failed to save assessment');
       setState(prev => ({ 
         ...prev, 
         loading: false,
         error: 'Failed to save assessment'
       }));
+      if (typeof window !== 'undefined') window?.dispatchEvent(new CustomEvent('notify', { detail: { type: 'error', message: 'Failed to save assessment' } }));
     }
   };
 
@@ -459,14 +643,28 @@ export default function AssessmentPage() {
 
       const objectiveMap: Record<string, any> = {};
       if (saved?.calculated_scores?.objectives) {
-        saved.calculated_scores.objectives.forEach((obj: any) => {
+        // sort objectives by order if present
+        const sortedObjs = [...saved.calculated_scores.objectives].sort((a:any,b:any)=> (a.order||0)-(b.order||0));
+        sortedObjs.forEach((obj: any) => {
+          // Normalize saved objective score which might be a number or an object
+          const rawScore = obj.score;
+          const finalScore = typeof rawScore === 'number'
+            ? rawScore
+            : (rawScore && typeof rawScore === 'object' ? (rawScore.final_score ?? rawScore.score ?? undefined) : undefined);
+          const scoreColor = (rawScore && typeof rawScore === 'object') ? (rawScore.score_color || '') : '';
+          const scoreLabel = (rawScore && typeof rawScore === 'object') ? (rawScore.score_label || '') : '';
+          const totalIndicators = (rawScore && typeof rawScore === 'object') ? (rawScore.total_indicators || 0) : 0;
+          const scoredIndicators = (rawScore && typeof rawScore === 'object') ? (rawScore.scored_indicators || 0) : 0;
+          const changeCategory = (rawScore && typeof rawScore === 'object') ? rawScore.change_category : undefined;
+          const gapCategory = (rawScore && typeof rawScore === 'object') ? rawScore.gap_category : undefined;
+
           objectiveMap[String(obj.id)] = {
             id: obj.id,
             name: obj.name,
             code: obj.code || '',
             description: '',
             color: '#fd7e14',
-            order: 0,
+            order: obj.order || 0,
             milestone: saved?.calculated_scores?.milestones?.[obj.id]
               ? {
                   id: obj.id,
@@ -477,15 +675,15 @@ export default function AssessmentPage() {
                 }
               : undefined,
             indicators: [],
-            score: obj.score
-              ? {
-                  final_score: obj.score,
-                  score_color: '',
-                  score_label: '',
-                  total_indicators: 0,
-                  scored_indicators: 0,
-                }
-              : undefined,
+            score: finalScore === undefined ? undefined : {
+              final_score: finalScore,
+              score_color: scoreColor,
+              score_label: scoreLabel,
+              total_indicators: totalIndicators,
+              scored_indicators: scoredIndicators,
+              change_category: changeCategory,
+              gap_category: gapCategory,
+            },
           };
         });
       }
@@ -500,8 +698,8 @@ export default function AssessmentPage() {
           name: ind.name,
           dhis2_uid: ind.dhis2_uid,
           description: '',
-          indicator_number: '',
-          display_order: 0,
+          indicator_number: ind.indicator_number || '',
+          display_order: ind.display_order || 0,
           target_value: ind.target_value ?? null,
           target_type: ind.target_type || 'increase',
           weight: 1,
@@ -524,7 +722,13 @@ export default function AssessmentPage() {
           };
         }
         const obj = { ...objectiveMap[objKey] };
-        obj.indicators = indicatorsByObjective[objKey];
+        // sort indicators by display_order then indicator_number natural
+        const sortedIndicators = [...indicatorsByObjective[objKey]].sort((a:any,b:any)=>{
+          const od = (a.display_order||0) - (b.display_order||0);
+          if (od !== 0) return od;
+          return String(a.indicator_number||'').localeCompare(String(b.indicator_number||''), undefined, { numeric: true });
+        });
+        obj.indicators = sortedIndicators;
         objectives.push(obj);
       });
 
@@ -538,6 +742,7 @@ export default function AssessmentPage() {
         loading: false,
         error: null,
       }));
+      if (typeof window !== 'undefined') window?.dispatchEvent(new CustomEvent('notify', { detail: { type: 'success', message: 'Assessment loaded' } }));
     } catch (error) {
       console.error('Error loading assessment:', error);
       setState((prev) => ({
@@ -545,6 +750,7 @@ export default function AssessmentPage() {
         loading: false,
         error: 'Failed to load assessment',
       }));
+      if (typeof window !== 'undefined') window?.dispatchEvent(new CustomEvent('notify', { detail: { type: 'error', message: 'Failed to load assessment' } }));
     }
   };
 
@@ -607,11 +813,13 @@ export default function AssessmentPage() {
       }));
 
       // Step 3: Load multi-period assessment data
-      const assessmentData = await assessmentService.getMultiPeriodAssessmentData({
+      let assessmentData = await assessmentService.getMultiPeriodAssessmentData({
         org_unit_ids: state.selectedOrgUnits,
         periods: state.selectedPeriods,
         include_scores: true,
       });
+
+      assessmentData = withRollups(computeAllIndicatorScores(assessmentData, state.selectedPeriods));
 
       setState(prev => ({ 
         ...prev, 
@@ -650,6 +858,138 @@ export default function AssessmentPage() {
     if (state.selectedPeriods.length === 0) return 'None';
     if (state.selectedPeriods.length === 1) return state.selectedPeriods[0].displayName;
     return `${state.selectedPeriods.length} periods selected`;
+  };
+
+  const exportToCSV = () => {
+    if (!state.multiPeriodData || state.multiPeriodData.length === 0) return;
+    const enc = (v: any) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+    };
+    const periods = state.selectedPeriods.map(p=>p.name);
+    const headers = ['#','Indicator', ...periods, 'Change','P-T Gap','Target','Assessed score','Remarks'];
+    const rows: string[] = [];
+    rows.push(headers.map(enc).join(','));
+
+    state.multiPeriodData[0].objectives.forEach((obj, oi) => {
+      // Objective header (optional in CSV)
+      rows.push(enc(`Objective ${oi+1}: ${obj.name}`));
+      obj.indicators.forEach((ind: any, ii: number) => {
+        const row: any[] = [];
+        row.push(`${oi+1}.${ii+1}`);
+        row.push(ind.name);
+        periods.forEach(p => row.push(ind?.data_values?.[p]?.value ?? ''));
+        row.push(''); // Change placeholder
+        row.push(''); // Gap placeholder
+        row.push(ind.target_value ?? '');
+        row.push((ind.score?.score ?? '') as any);
+        row.push(''); // remarks
+        rows.push(row.map(enc).join(','));
+      });
+      // Milestone row if exists
+      if ((obj as any).milestone?.name) {
+        const ms = (obj as any).milestone;
+        const row = [ 'MS', `Milestone for ${obj.name}`, ...periods.map(()=>''), '', '', '', (ms.score ?? ''), '' ];
+        rows.push(row.map(enc).join(','));
+      }
+    });
+
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const org = state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || 'OrgUnit';
+    a.download = `assessment_${org}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportToPDF = () => {
+    if (!state.multiPeriodData || state.multiPeriodData.length === 0) return;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const org = state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || 'Org Unit';
+    const periods = state.selectedPeriods.map(p=>p.displayName).join(', ');
+    const style = `
+      <style>
+        body{font-family: Arial, sans-serif; padding:16px;}
+        h2{margin:0 0 6px 0}
+        .meta{color:#555;margin-bottom:12px}
+        table{border-collapse:collapse;width:100%; font-size:12px}
+        th,td{border:1px solid #ddd;padding:4px 6px}
+        th{background:#f5f5f5;text-align:left}
+        .obj{background:#fff3e0;font-weight:bold}
+        .ms{background:#fff8e1;font-weight:bold}
+        .score{-webkit-print-color-adjust: exact; print-color-adjust: exact; color:#fff; font-weight:bold; text-align:center}
+        .score.g{background:#28a745}
+        .score.y{background:#ffc107}
+        .score.o{background:#fd7e14}
+        .score.r{background:#dc3545}
+        .legend{margin-top:12px}
+        .chip{display:inline-block;padding:2px 6px;border-radius:4px;color:#fff;margin-right:6px;font-size:11px}
+        .chip.g{background:#28a745}
+        .chip.y{background:#ffc107;color:#333}
+        .chip.o{background:#fd7e14}
+        .chip.r{background:#dc3545}
+        @media print {
+          .score{color:#fff !important}
+        }
+      </style>`;
+    let html = `<h2>Assessment Report</h2><div class="meta">${org} &middot; Periods: ${periods} &middot; Generated: ${new Date().toLocaleString()}</div>`;
+    html += '<table><thead><tr><th>#</th><th>Indicator</th>' + state.selectedPeriods.map(p=>`<th>${p.displayName}</th>`).join('') + '<th>Change</th><th>P-T Gap</th><th>Target</th><th>Score</th></tr></thead><tbody>';
+    state.multiPeriodData[0].objectives.forEach((obj, oi) => {
+      html += `<tr class=\"obj\"><td colspan=\"${2 + state.selectedPeriods.length + 4}\">Objective ${oi+1}: ${obj.name}</td></tr>`;
+      obj.indicators.forEach((ind: any, ii:number)=>{
+        html += '<tr>';
+        html += `<td>${oi+1}.${ii+1}</td><td>${ind.name}</td>`;
+        state.selectedPeriods.forEach(p=>{
+          const v = ind?.data_values?.[p.name]?.value ?? '';
+          html += `<td>${v}</td>`;
+        });
+        const chCalc = (function(){
+          const lastName = state.selectedPeriods[state.selectedPeriods.length-1].name;
+          const prevName = state.selectedPeriods.length>1 ? state.selectedPeriods[state.selectedPeriods.length-2].name : undefined;
+          const currVal = Number(ind?.data_values?.[lastName]?.value ?? NaN);
+          const prevVal = prevName ? Number(ind?.data_values?.[prevName]?.value ?? NaN) : NaN;
+          if (!isFinite(currVal) || !isFinite(prevVal) || prevVal === 0) return '';
+          const change = ((currVal - prevVal)/Math.abs(prevVal))*100;
+          return isFinite(change) ? change.toFixed(1)+'%' : '';
+        })();
+        const gapCalc = (function(){
+          const lastName = state.selectedPeriods[state.selectedPeriods.length-1].name;
+          const currVal = Number(ind?.data_values?.[lastName]?.value ?? NaN);
+          const target = Number(ind?.target_value ?? NaN);
+          if (!isFinite(currVal) || !isFinite(target) || target === 0) return '';
+          const targetType=(ind?.target_type||'increase').toLowerCase();
+          const ratio = currVal/target;
+          const gap = targetType==='increase' ? (ratio-1)*100 : (1-ratio)*100;
+          return isFinite(gap) ? gap.toFixed(1)+'%' : '';
+        })();
+        const s = Number(ind?.score?.score);
+        const cls = isNaN(s) ? '' : (s>=1?'g':(s>=0?'y':(s>=-1?'o':'r')));
+        html += `<td>${chCalc}</td><td>${gapCalc}</td><td>${ind.target_value ?? ''}</td><td class="score ${cls}">${ind?.score?.score ?? ''}</td>`;
+        html += '</tr>';
+      });
+      if ((obj as any).milestone?.name){
+        const ms = (obj as any).milestone;
+        html += `<tr class="ms"><td>MS</td><td>Milestone for ${obj.name}</td>`;
+        html += state.selectedPeriods.map(()=>'<td></td>').join('');
+        html += `<td></td><td></td><td></td><td>${ms.score ?? ''}</td></tr>`;
+      }
+    });
+    html += '</tbody></table>';
+    html += '<div class="legend">'
+      + '<div><span class="chip g">>= +1</span> Highly Performing</div>'
+      + '<div><span class="chip y">0..&lt;+1</span> Sustained</div>'
+      + '<div><span class="chip o">-1..&lt;0</span> Underperforming</div>'
+      + '<div><span class="chip r">&lt; -1</span> Severely Underperforming</div>'
+      + '</div>';
+    w.document.write('<!doctype html><html><head><meta charset="utf-8">'+style+'</head><body>'+html+'</body></html>');
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   return (
@@ -692,27 +1032,26 @@ export default function AssessmentPage() {
         <div className="mb-6">
           {/* Top Action Bar */}
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <Button 
-                onClick={handleCreateAssessmentWithPeriods}
-                disabled={state.isSyncing || state.selectedPeriods.length === 0 || state.selectedOrgUnits.length === 0}
-                size="sm"
-                className="text-white hover:opacity-90"
-                style={{ backgroundColor: '#265380' }}
-                title="Update assessment with selected periods and org units"
-              >
-                {state.isSyncing ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Creating Assessment...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Update
-                  </>
-                )}
-              </Button>
+            <div className="flex items-center space-x-3">
+              
+              {/* Sector score badge */}
+              {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector_score && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="px-2 py-1 rounded text-white text-xs font-medium"
+                      style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
+                    >
+                      Sector: {typeof state.multiPeriodData[0].sector_score.overall_score === 'number' ? state.multiPeriodData[0].sector_score.overall_score.toFixed(2) : '-'}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-xs">
+                      {state.multiPeriodData[0].sector_score.score_label}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               
               <div className="relative group">
                 <Button 
@@ -737,11 +1076,42 @@ export default function AssessmentPage() {
                       Save Assessment
                     </button>
                     <div className="border-t border-gray-200 my-1"></div>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Export to Excel
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={exportToCSV}>
+                      Export to CSV
                     </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Export to PDF
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={exportToPDF}>
+                      Export to PDF (print)
+                    </button>
+                    <button 
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={async ()=>{
+                        if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
+                        try{
+                          const res = await assessmentService.exportHolisticExcel({
+                            org_unit_ids: state.selectedOrgUnits,
+                            periods: state.selectedPeriods,
+                            include_scores: true,
+                          });
+                          const url = res?.file_url || res?.file_path;
+                          if (url) {
+                            // ensure absolute URL for direct download
+                            const href = url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url}`;
+                            const a = document.createElement('a');
+                            a.href = href;
+                            a.setAttribute('download', href.split('/').pop() || 'assessment.xlsx');
+                            a.style.display = 'none';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            toast.success('Excel export generated');
+                          }
+                        }catch(e){
+                          console.error('Export Excel error', e);
+                          toast.error('Failed to export Excel');
+                        }
+                      }}
+                    >
+                      Export to Excel (.xlsx)
                     </button>
                   </div>
                 </div>
@@ -759,26 +1129,49 @@ export default function AssessmentPage() {
                   Download
                   <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
                   <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Table Layout
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={async ()=>{
+                        if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
+                        try{
+                          const res = await assessmentService.exportHolisticExcel({
+                            org_unit_ids: state.selectedOrgUnits,
+                            periods: state.selectedPeriods,
+                            include_scores: true,
+                          });
+                          const url = res?.file_url || res?.file_path;
+                          if (url) {
+                            const href = url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url}`;
+                            const a = document.createElement('a');
+                            a.href = href;
+                            a.setAttribute('download', href.split('/').pop() || 'assessment.xlsx');
+                            a.style.display = 'none';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            toast.success('Excel export generated');
+                          }
+                        }catch(e){
+                          console.error('Export Excel error', e);
+                          toast.error('Failed to export Excel');
+                        }
+                      }}
+                    >
                       Excel (.xlsx)
                     </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={exportToCSV}
+                    >
                       CSV (.csv)
                     </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      PDF Report
-                    </button>
-                    <div className="border-t border-gray-200 my-1"></div>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Raw Data (JSON)
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Assessment Summary
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={exportToPDF}
+                    >
+                      PDF (print)
                     </button>
                   </div>
                 </div>
@@ -810,50 +1203,32 @@ export default function AssessmentPage() {
             
           </div>
 
-          {/* Data Selection Area */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-700">Data Selection</h3>
-              <div className="text-xs text-gray-500">
-                {state.loading && <span className="flex items-center"><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Loading...</span>}
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Organization Units */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <Building2 className="h-4 w-4 mr-2" />
-                    Organization Units
-                    {state.loading && <RefreshCw className="h-3 w-3 ml-2 animate-spin" />}
-                  </label>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setIsOrgUnitModalOpen(true)}
-                    disabled={state.loading}
-                    className="text-xs"
-                  >
-                    Select Units
-                  </Button>
-                </div>
-                
-                <div className="flex flex-wrap gap-2 min-h-[2rem]">
-                  {state.selectedOrgUnits.length > 0 ? (
+          {/* Pivot-style selection toolbar */}
+          <div className="bg-white border border-gray-200 rounded-lg p-3 mb-4">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Filters: Org Units */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 flex items-center"><Building2 className="h-4 w-4 mr-1" /> Filter:</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsOrgUnitModalOpen(true)}
+                  disabled={state.loading}
+                  className="text-xs"
+                >
+                  Select Units
+                </Button>
+                <div className="flex flex-wrap items-center gap-1 max-w-[32rem]">
+                  {state.selectedOrgUnits.length ? (
                     state.selectedOrgUnits.map((orgUnitId, index) => {
                       const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
                       return (
-                        <Badge 
-                          key={orgUnitId} 
-                          variant="secondary" 
-                          className="bg-blue-50 text-blue-700 border-blue-200 h-6 text-xs"
-                        >
+                        <Badge key={orgUnitId} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 h-6 text-[10px]">
                           {orgUnit?.displayName || orgUnitId}
                           <button
-                            onClick={() => setState(prev => ({ 
-                              ...prev, 
-                              selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index) 
+                            onClick={() => setState(prev => ({
+                              ...prev,
+                              selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
                             }))}
                             className="ml-1 hover:text-blue-800"
                           >
@@ -863,43 +1238,35 @@ export default function AssessmentPage() {
                       );
                     })
                   ) : (
-                    <span className="text-sm text-gray-500 italic">No organization units selected</span>
+                    <span className="text-xs text-gray-400 italic">None</span>
                   )}
                 </div>
               </div>
 
-              {/* Periods */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-gray-700 flex items-center">
-                    <Clock className="h-4 w-4 mr-2" />
-                    Assessment Periods
-                    {state.loading && <RefreshCw className="h-3 w-3 ml-2 animate-spin" />}
-                  </label>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setIsPeriodModalOpen(true)}
-                    disabled={state.loading}
-                    className="text-xs"
-                  >
-                    Select Periods
-                  </Button>
-                </div>
-                
-                <div className="flex flex-wrap gap-2 min-h-[2rem]">
-                  {state.selectedPeriods.length > 0 ? (
+              {/* Divider */}
+              <span className="hidden md:inline-block h-6 border-l border-gray-200 mx-1" />
+
+              {/* Columns: Periods */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 flex items-center"><Clock className="h-4 w-4 mr-1" /> Columns:</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPeriodModalOpen(true)}
+                  disabled={state.loading}
+                  className="text-xs"
+                >
+                  Select Periods
+                </Button>
+                <div className="flex flex-wrap items-center gap-1 max-w-[28rem]">
+                  {state.selectedPeriods.length ? (
                     state.selectedPeriods.map((period, index) => (
-                      <Badge 
-                        key={period.id}
-                        variant="secondary" 
-                        className="bg-green-50 text-green-700 border-green-200 h-6 text-xs"
-                      >
+                      <Badge key={period.id} variant="secondary" className="bg-green-50 text-green-700 border-green-200 h-6 text-[10px]">
                         {period.displayName}
                         <button
-                          onClick={() => setState(prev => ({ 
-                            ...prev, 
-                            selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index) 
+                          onClick={() => setState(prev => ({
+                            ...prev,
+                            selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
                           }))}
                           className="ml-1 hover:text-green-800"
                         >
@@ -908,9 +1275,27 @@ export default function AssessmentPage() {
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-sm text-gray-500 italic">No periods selected</span>
+                    <span className="text-xs text-gray-400 italic">None</span>
                   )}
                 </div>
+              </div>
+
+              {/* Right side: status */}
+              <div className="ml-auto text-xs text-gray-500 flex items-center gap-2">
+                {state.loading && (
+                  <span className="flex items-center"><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Loading…</span>
+                )}
+                {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector && (
+                  <span className="flex items-center gap-1">
+                    <span>Sector:</span>
+                    <span
+                      className="px-2 py-1 rounded text-white"
+                      style={{ backgroundColor: state.multiPeriodData[0].sector.score_color || '#6c757d' }}
+                    >
+                      {typeof state.multiPeriodData[0].sector.overall_score === 'number' ? state.multiPeriodData[0].sector.overall_score.toFixed(2) : '-'}
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -928,11 +1313,32 @@ export default function AssessmentPage() {
                   Performance indicators with trend analysis and scoring
                 </CardDescription>
               </div>
-              <div className="flex items-center space-x-2">
-                <Button variant="outline" size="sm" className="border-gray-300 text-gray-700 hover:bg-gray-50">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </Button>
+              <div className="hidden md:flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Org unit:</span>
+                  {state.selectedOrgUnits.length ? (
+                    <span className="px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      {state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || state.selectedOrgUnits[0]}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">None</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">Periods:</span>
+                  {state.selectedPeriods.length ? (
+                    <div className="flex items-center gap-1 flex-wrap max-w-[380px]">
+                      {state.selectedPeriods.slice(0,3).map(p=> (
+                        <span key={p.id} className="px-2 py-1 rounded bg-green-50 text-green-700 border border-green-200">{p.displayName}</span>
+                      ))}
+                      {state.selectedPeriods.length > 3 && (
+                        <span className="px-2 py-1 rounded bg-gray-100 text-gray-600 border border-gray-200">+{state.selectedPeriods.length-3}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-400">None</span>
+                  )}
+                </div>
               </div>
             </div>
           </CardHeader>

@@ -67,18 +67,22 @@ export default function ExcelTable({
               };
             });
             
-            // Change column
+            // Change column (computed in page logic; fallback client derivation if absent)
             const changeKey = `${indicator.id}_change`;
             newCellData[changeKey] = {
-              value: indicator.score?.percent_change?.toString() || '',
+              value: indicator.score?.percent_change !== undefined && indicator.score?.percent_change !== null
+                ? `${indicator.score?.percent_change}%`
+                : '',
               isEditable: false,
               isDHIS2Data: false
             };
             
-            // P-T Gap Analysis column
+            // P-T Gap Analysis column (computed in page logic)
             const gapKey = `${indicator.id}_gap`;
             newCellData[gapKey] = {
-              value: indicator.score?.target_gap?.toString() || '',
+              value: indicator.score?.target_gap !== undefined && indicator.score?.target_gap !== null
+                ? `${indicator.score?.target_gap}%`
+                : '',
               isEditable: false,
               isDHIS2Data: false
             };
@@ -160,6 +164,26 @@ export default function ExcelTable({
       default:
         return 'bg-white';
     }
+  };
+
+  const getChangeBg = (val?: string) => {
+    if (!val) return '';
+    const n = parseFloat(val);
+    if (isNaN(n)) return '';
+    // positive change → light green, negative → light red, near zero → light yellow
+    if (n > 5) return 'bg-green-50';
+    if (n < -5) return 'bg-red-50';
+    return 'bg-yellow-50';
+  };
+
+  const getGapBg = (val?: string) => {
+    if (!val) return '';
+    const n = Math.abs(parseFloat(val));
+    if (isNaN(n)) return '';
+    // <=10% close to target → light green, 10-40 → light yellow, >40 → light red
+    if (n <= 10) return 'bg-green-50';
+    if (n <= 40) return 'bg-yellow-50';
+    return 'bg-red-50';
   };
 
   if (!multiPeriodData || multiPeriodData.length === 0) {
@@ -282,14 +306,14 @@ export default function ExcelTable({
                   })}
                   
                   {/* Change column */}
-                  <td className="border border-gray-300 px-1 py-1">
+                  <td className={`border border-gray-300 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
                     <div className="text-xs text-center">
                       {cellData[`${indicator.id}_change`]?.value || ''}
                     </div>
                   </td>
                   
                   {/* P-T Gap Analysis column */}
-                  <td className="border border-gray-300 px-1 py-1">
+                  <td className={`border border-gray-300 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
                     <div className="text-xs text-center">
                       {cellData[`${indicator.id}_gap`]?.value || ''}
                     </div>

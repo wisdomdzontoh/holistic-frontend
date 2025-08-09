@@ -181,6 +181,29 @@ class AssessmentService {
     });
   }
 
+  async exportHolisticExcel(params: {
+    org_unit_ids: string[];
+    periods: Period[];
+    include_scores?: boolean;
+  }): Promise<{ status: string; file_path: string; file_url: string }>{
+    const formattedPeriods = params.periods.map(period => ({
+      name: period.name,
+      period_type: period.periodType,
+      start_date: period.startDate,
+      end_date: period.endDate,
+      code: period.code
+    }));
+    return this.makeRequest('/assessments/holistic-assessment/export_excel/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        org_unit_ids: params.org_unit_ids,
+        periods: formattedPeriods,
+        include_scores: params.include_scores ?? true,
+      }),
+    });
+  }
+
   async getAssessmentPeriods(): Promise<AssessmentPeriod[]> {
     const response = await this.makeRequest('/configurations/assessment-periods/');
     // Handle different response structures
@@ -390,14 +413,25 @@ class AssessmentService {
 
   async getSavedAssessments(params: {
     org_unit_id?: string;
-  }): Promise<any> {
+    page?: number;
+    size?: number;
+    search?: string;
+    ordering?: 'name'|'-name'|'created_at'|'-created_at';
+    owner?: 'mine'|'all';
+  }, signal?: AbortSignal): Promise<{ results: any[]; count: number; page: number; size: number }> {
     const queryParams = new URLSearchParams();
-    if (params.org_unit_id) {
-      queryParams.append('org_unit_id', params.org_unit_id);
+    if (params.org_unit_id) queryParams.append('org_unit_id', params.org_unit_id);
+    if (params.page) queryParams.append('page', String(params.page));
+    if (params.size) queryParams.append('size', String(params.size));
+    if (params.search) queryParams.append('search', params.search);
+    if (params.ordering) queryParams.append('ordering', params.ordering);
+    if (params.owner) queryParams.append('owner', params.owner);
+    const response = await this.makeRequest(`/assessments/holistic/get_saved_assessments/?${queryParams}`, { signal });
+    if (response && typeof response === 'object' && Array.isArray(response.results)) {
+      return { results: response.results, count: response.count || response.results.length, page: response.page || 1, size: response.size || response.results.length };
     }
-    
-    const response = await this.makeRequest(`/assessments/holistic/get_saved_assessments/?${queryParams}`);
-    return response;
+    const list = response?.assessments || response?.results || [];
+    return { results: Array.isArray(list) ? list : [], count: Array.isArray(list) ? list.length : 0, page: 1, size: Array.isArray(list) ? list.length : 0 };
   }
 
   async loadAssessment(params: {
@@ -429,6 +463,13 @@ class AssessmentService {
     }
     
     return this.makeRequest(`/assessments/management/assessment-report/?${queryParams}`);
+  }
+
+  async getScoringRules(): Promise<any[]> {
+    const response = await this.makeRequest('/configurations/scoring-rules/');
+    if (Array.isArray(response)) return response;
+    if (response?.results && Array.isArray(response.results)) return response.results;
+    return [];
   }
 
   async getDashboardSummary(assessmentPeriodId?: number): Promise<any> {
