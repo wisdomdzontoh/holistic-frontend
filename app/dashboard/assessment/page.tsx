@@ -591,7 +591,7 @@ export default function AssessmentPage() {
         }
       };
 
-      let result;
+      let result: any;
       if (state.currentAssessmentId) {
         // Update existing assessment
         result = await assessmentService.updateAssessment({
