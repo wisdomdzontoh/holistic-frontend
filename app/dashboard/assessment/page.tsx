@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import PeriodSelectionModal from '@/components/modals/period-selection-modal';
+import { OpenAssessmentModal, NameAssessmentModal, ConfirmModal } from '@/components/modals/open-assessment-modal';
 import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-modal';
 import { assessmentService, AssessmentData, AssessmentPeriod, OrgUnit, Period, DHIS2OrgUnit } from '@/lib/assessment-service';
 import ExcelTable from '@/components/assessment/excel-table';
@@ -69,6 +70,10 @@ export default function AssessmentPage() {
   
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isOrgUnitModalOpen, setIsOrgUnitModalOpen] = useState(false);
+  const [isOpenModal, setIsOpenModal] = useState(false);
+  const [isNameModal, setIsNameModal] = useState(false);
+  const [pendingSaveName, setPendingSaveName] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{open:boolean,title:string,message:string,confirmText?:string,onConfirm?:()=>void}>({open:false,title:'',message:''});
 
   // Load assessment data on component mount
   useEffect(() => {
@@ -233,7 +238,7 @@ export default function AssessmentPage() {
     });
   };
 
-  const handleMilestoneScoreChange = (indicatorId: number, score: string) => {
+  const handleScoreChange = (indicatorId: number, score: string) => {
     // Update the multiPeriodData with the new score
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
@@ -262,6 +267,37 @@ export default function AssessmentPage() {
             return indicator;
           })
         }))
+      })) as AssessmentData[];
+      
+      return { ...prev, multiPeriodData: updatedData };
+    });
+  };
+
+  const handleMilestoneScoreChange = (objectiveId: number, score: string) => {
+    // Update the multiPeriodData with the new milestone score
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
+      
+      const updatedData = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
+        objectives: periodData.objectives.map(objective => {
+          if (objective.id === objectiveId && objective.milestone) {
+            const numScore = parseFloat(score);
+            const scoreColor = getScoreColor(numScore);
+            const scoreLabel = getScoreLabel(numScore);
+            
+            return {
+              ...objective,
+              milestone: {
+                ...objective.milestone,
+                score: numScore,
+                score_color: scoreColor,
+                score_label: scoreLabel
+              }
+            };
+          }
+          return objective;
+        })
       })) as AssessmentData[];
       
       return { ...prev, multiPeriodData: updatedData };
@@ -297,6 +333,219 @@ export default function AssessmentPage() {
 
   const handleOrgUnitSelection = (orgUnits: string[]) => {
     setState(prev => ({ ...prev, selectedOrgUnits: orgUnits }));
+  };
+
+  const performSave = async (finalName: string) => {
+    if (!state.multiPeriodData || state.multiPeriodData.length === 0) {
+      setState(prev => ({ ...prev, error: 'No assessment data to save' }));
+      return;
+    }
+
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+
+      // Prepare assessment data for saving
+      const assessmentName = finalName || `Assessment_${new Date().toISOString().split('T')[0]}`;
+      const orgUnitId = state.selectedOrgUnits[0] || '';
+      const orgUnitName = state.multiPeriodData[0]?.org_unit_name || '';
+      const periods = state.selectedPeriods.map(p => p.name);
+      
+      // Extract indicator data
+      const indicatorData: Record<string, any> = {};
+      state.multiPeriodData.forEach(periodData => {
+        periodData.objectives.forEach(objective => {
+          objective.indicators.forEach(indicator => {
+            const key = `${indicator.id}`;
+            indicatorData[key] = {
+              name: indicator.name,
+              dhis2_uid: indicator.dhis2_uid,
+              target_value: indicator.target_value,
+              data_values: indicator.data_values,
+              score: indicator.score
+            };
+          });
+        });
+      });
+
+      // Extract milestone scores
+      const milestoneScores: Record<string, any> = {};
+      state.multiPeriodData.forEach(periodData => {
+        periodData.objectives.forEach(objective => {
+          if (objective.milestone) {
+            milestoneScores[objective.id] = {
+              name: objective.milestone.name,
+              score: objective.milestone.score ?? -2
+            };
+          }
+        });
+      });
+
+      const saveData = {
+        name: assessmentName,
+        org_unit_id: orgUnitId,
+        org_unit_name: orgUnitName,
+        periods: periods,
+        indicator_data: indicatorData,
+        calculated_scores: {
+          milestones: milestoneScores,
+          objectives: state.multiPeriodData[0]?.objectives.map(obj => ({
+            id: obj.id,
+            name: obj.name,
+            score: obj.score
+          })) || [],
+          sector_score: state.multiPeriodData[0]?.sector_score
+        },
+        user_notes: '',
+        metadata: {
+          total_indicators: state.multiPeriodData[0]?.objectives.reduce((sum, obj) => sum + obj.indicators.length, 0) || 0,
+          total_objectives: state.multiPeriodData[0]?.objectives.length || 0,
+          assessment_type: 'holistic'
+        }
+      };
+
+      const result = await assessmentService.saveAssessment(saveData);
+      
+      setState(prev => ({ 
+        ...prev, 
+        loading: false,
+        error: null
+      }));
+
+      // Show success message
+      setConfirmState({open:true,title:'Saved',message:'Assessment saved successfully!',confirmText:'OK'});
+      
+    } catch (error) {
+      console.error('Error saving assessment:', error);
+      setState(prev => ({ 
+        ...prev, 
+        loading: false,
+        error: 'Failed to save assessment'
+      }));
+    }
+  };
+
+  const handleSaveAssessment = () => {
+    const defaultName = `Assessment_${new Date().toISOString().split('T')[0]}`;
+    setPendingSaveName(defaultName);
+    setIsNameModal(true);
+  };
+
+  const handleLoadAssessment = async (assessmentId: string) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+
+      const res = await assessmentService.loadAssessment({ assessment_id: assessmentId });
+      const saved = res?.assessment || res;
+
+      const loadedPeriods: Period[] = (saved?.periods || []).map((name: string, idx: number) => ({
+        id: String(idx + 1),
+        name,
+        displayName: name,
+        startDate: '',
+        endDate: '',
+        periodType: 'yearly',
+        code: name,
+      }));
+
+      const multi: AssessmentData[] = [
+        {
+          org_unit_id: saved.org_unit_id,
+          org_unit_name: saved.org_unit_name,
+          assessment_period: { id: 0, name: loadedPeriods[0]?.name || '', start_date: '', end_date: '' },
+          objectives: [],
+          sector_score: saved?.calculated_scores?.sector_score,
+        } as any,
+      ];
+
+      const objectiveMap: Record<string, any> = {};
+      if (saved?.calculated_scores?.objectives) {
+        saved.calculated_scores.objectives.forEach((obj: any) => {
+          objectiveMap[String(obj.id)] = {
+            id: obj.id,
+            name: obj.name,
+            code: obj.code || '',
+            description: '',
+            color: '#fd7e14',
+            order: 0,
+            milestone: saved?.calculated_scores?.milestones?.[obj.id]
+              ? {
+                  id: obj.id,
+                  name: saved.calculated_scores.milestones[obj.id].name,
+                  code: '',
+                  color: '#ffc107',
+                  score: saved.calculated_scores.milestones[obj.id].score,
+                }
+              : undefined,
+            indicators: [],
+            score: obj.score
+              ? {
+                  final_score: obj.score,
+                  score_color: '',
+                  score_label: '',
+                  total_indicators: 0,
+                  scored_indicators: 0,
+                }
+              : undefined,
+          };
+        });
+      }
+
+      const indicatorsByObjective: Record<string, any[]> = {};
+      Object.keys(saved?.indicator_data || {}).forEach((key) => {
+        const ind = saved.indicator_data[key];
+        const objId = ind.objective_id ? String(ind.objective_id) : 'default';
+        if (!indicatorsByObjective[objId]) indicatorsByObjective[objId] = [];
+        indicatorsByObjective[objId].push({
+          id: Number(key),
+          name: ind.name,
+          dhis2_uid: ind.dhis2_uid,
+          description: '',
+          indicator_number: '',
+          display_order: 0,
+          target_value: ind.target_value ?? null,
+          target_type: ind.target_type || 'increase',
+          weight: 1,
+          score: ind.score,
+          data_values: ind.data_values || {},
+        });
+      });
+
+      const objectives: any[] = [];
+      Object.keys(indicatorsByObjective).forEach((objKey) => {
+        if (!objectiveMap[objKey]) {
+          objectiveMap[objKey] = {
+            id: objKey === 'default' ? 0 : Number(objKey),
+            name: objKey === 'default' ? 'Objective' : `Objective ${objKey}`,
+            code: '',
+            description: '',
+            color: '#fd7e14',
+            order: 0,
+            indicators: [],
+          };
+        }
+        const obj = { ...objectiveMap[objKey] };
+        obj.indicators = indicatorsByObjective[objKey];
+        objectives.push(obj);
+      });
+
+      multi[0].objectives = objectives as any;
+
+      setState((prev) => ({
+        ...prev,
+        selectedOrgUnits: saved?.org_unit_id ? [saved.org_unit_id] : prev.selectedOrgUnits,
+        selectedPeriods: loadedPeriods.length ? loadedPeriods : prev.selectedPeriods,
+        multiPeriodData: multi,
+        loading: false,
+        error: null,
+      }));
+    } catch (error) {
+      console.error('Error loading assessment:', error);
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to load assessment',
+      }));
+    }
   };
 
   const handleCreateAssessmentWithPeriods = async () => {
@@ -477,13 +726,14 @@ export default function AssessmentPage() {
                 </Button>
                 <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
                   <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      New Assessment
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={()=>setIsOpenModal(true)}>
                       Open Assessment
                     </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <button 
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                       onClick={handleSaveAssessment}
+                      disabled={!state.multiPeriodData || state.multiPeriodData.length === 0}
+                    >
                       Save Assessment
                     </button>
                     <div className="border-t border-gray-200 my-1"></div>
@@ -497,37 +747,7 @@ export default function AssessmentPage() {
                 </div>
               </div>
               
-              <div className="relative group">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Options
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                  <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Data Configuration
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Scoring Rules
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      Display Settings
-                    </button>
-                    <div className="border-t border-gray-200 my-1"></div>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      DHIS2 Settings
-                    </button>
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                      User Preferences
-                    </button>
-                  </div>
-                </div>
-              </div>
+              {/* Options menu removed to simplify UI */}
               
               <div className="relative group">
                 <Button 
@@ -585,17 +805,7 @@ export default function AssessmentPage() {
                 )}
               </Button>
               
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                onClick={loadAssessmentReport}
-                disabled={state.selectedPeriods.length === 0}
-                title="Reload assessment data for the selected period"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Reload Assessment
-              </Button>
+              {/* Reload button removed to reduce clutter */}
             </div>
             
           </div>
@@ -750,7 +960,8 @@ export default function AssessmentPage() {
                   multiPeriodData={state.multiPeriodData}
                   selectedPeriods={state.selectedPeriods}
                   onCellEdit={handleCellEdit}
-                  onScoreChange={handleMilestoneScoreChange}
+                  onScoreChange={handleScoreChange}
+                  onMilestoneScoreChange={handleMilestoneScoreChange}
                 />
               </div>
             ) : (
@@ -776,6 +987,31 @@ export default function AssessmentPage() {
           onUpdate={handleOrgUnitSelection}
           selectedOrgUnits={state.selectedOrgUnits}
           dhis2OrgUnits={state.dhis2OrgUnits}
+        />
+
+        <OpenAssessmentModal
+          isOpen={isOpenModal}
+          onClose={()=>setIsOpenModal(false)}
+          onOpenAssessment={async (id)=>{
+            await handleLoadAssessment(id);
+          }}
+          orgUnitId={state.selectedOrgUnits[0]}
+        />
+
+        <NameAssessmentModal
+          isOpen={isNameModal}
+          onClose={()=>setIsNameModal(false)}
+          defaultName={pendingSaveName || undefined}
+          onConfirm={(name)=>performSave(name)}
+        />
+
+        <ConfirmModal
+          isOpen={confirmState.open}
+          onClose={()=>setConfirmState(prev=>({...prev,open:false}))}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmText={confirmState.confirmText}
+          onConfirm={()=>confirmState.onConfirm?.()}
         />
       </div>
     </DashboardLayout>

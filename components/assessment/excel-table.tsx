@@ -12,6 +12,7 @@ interface ExcelTableProps {
   selectedPeriods: Period[];
   onCellEdit: (indicatorId: number, period: string, value: string) => void;
   onScoreChange: (indicatorId: number, score: string) => void;
+  onMilestoneScoreChange?: (objectiveId: number, score: string) => void;
 }
 
 interface CellData {
@@ -20,21 +21,33 @@ interface CellData {
   isDHIS2Data: boolean;
 }
 
+interface MilestoneScoreData {
+  [objectiveId: number]: string;
+}
+
 export default function ExcelTable({ 
   multiPeriodData, 
   selectedPeriods, 
   onCellEdit, 
-  onScoreChange 
+  onScoreChange,
+  onMilestoneScoreChange
 }: ExcelTableProps) {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
+  const [milestoneScores, setMilestoneScores] = useState<MilestoneScoreData>({});
 
   // Initialize cell data when multiPeriodData changes
   useEffect(() => {
     if (multiPeriodData && multiPeriodData.length > 0) {
       const newCellData: Record<string, CellData> = {};
+      const newMilestoneScores: MilestoneScoreData = {};
       
       multiPeriodData.forEach((periodData) => {
         periodData.objectives.forEach((objective) => {
+          // Initialize milestone score if objective has milestone
+          if (objective.milestone) {
+            newMilestoneScores[objective.id] = '-2.00';
+          }
+          
           objective.indicators.forEach((indicator) => {
             // Performance trend columns (period data)
             selectedPeriods.forEach((period) => {
@@ -90,6 +103,7 @@ export default function ExcelTable({
       });
       
       setCellData(newCellData);
+      setMilestoneScores(newMilestoneScores);
     }
   }, [multiPeriodData, selectedPeriods]);
 
@@ -109,6 +123,24 @@ export default function ExcelTable({
     }
   };
 
+  const handleMilestoneScoreChange = (objectiveId: number, value: string) => {
+    // Validate score input (-2, -1, 0, 1, 2)
+    const validScores = ['-2', '-1', '0', '1', '2'];
+    const numericValue = value.replace(/\.00$/, ''); // Remove .00 suffix for validation
+    
+    if (validScores.includes(numericValue)) {
+      const formattedValue = `${numericValue}.00`;
+      setMilestoneScores(prev => ({
+        ...prev,
+        [objectiveId]: formattedValue
+      }));
+      
+      if (onMilestoneScoreChange) {
+        onMilestoneScoreChange(objectiveId, formattedValue);
+      }
+    }
+  };
+
   const getScoreColor = (score: string) => {
     const numScore = parseFloat(score);
     if (isNaN(numScore)) return '#6c757d';
@@ -122,7 +154,7 @@ export default function ExcelTable({
   const getRowBackground = (type: string) => {
     switch (type) {
       case 'milestone':
-        return 'bg-yellow-100';
+        return 'bg-yellow-50 border-l-4 border-l-yellow-400';
       case 'objective':
         return 'bg-orange-100';
       default:
@@ -293,10 +325,65 @@ export default function ExcelTable({
                 </tr>
               ))}
               
-              {/* Milestone row */}
+              {/* Milestone row with score input */}
               <tr className={getRowBackground('milestone')}>
-                <td className="border border-gray-300 px-2 py-2 font-medium" colSpan={7 + selectedPeriods.length}>
-                  {objective.milestone?.name || `MS ${objective.name.replace('Objective', 'Milestone')}`}
+                <td className="border border-gray-300 px-2 py-2 font-medium">
+                  MS
+                </td>
+                <td className="border border-gray-300 px-2 py-2 font-medium">
+                  {objective.milestone?.name || `Milestone for ${objective.name.replace('Objective', '')}`}
+                </td>
+                
+                {/* Performance Trend columns - empty for milestone */}
+                {selectedPeriods.map((period) => (
+                  <td key={period.name} className="border border-gray-300 px-1 py-1">
+                    <div className="text-xs text-center text-gray-400">
+                      -
+                    </div>
+                  </td>
+                ))}
+                
+                {/* Change column - empty for milestone */}
+                <td className="border border-gray-300 px-1 py-1">
+                  <div className="text-xs text-center text-gray-400">
+                    -
+                  </div>
+                </td>
+                
+                {/* P-T Gap Analysis column - empty for milestone */}
+                <td className="border border-gray-300 px-1 py-1">
+                  <div className="text-xs text-center text-gray-400">
+                    -
+                  </div>
+                </td>
+                
+                {/* Target column - empty for milestone */}
+                <td className="border border-gray-300 px-1 py-1">
+                  <div className="text-xs text-center text-gray-400">
+                    -
+                  </div>
+                </td>
+                
+                {/* Milestone score input - properly aligned */}
+                <td className="border border-gray-300 px-1 py-1">
+                  <Input
+                    value={milestoneScores[objective.id] || '-2.00'}
+                    onChange={(e) => handleMilestoneScoreChange(objective.id, e.target.value)}
+                    className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500"
+                    style={{ 
+                      backgroundColor: getScoreColor(milestoneScores[objective.id] || '-2.00'),
+                      color: 'white'
+                    }}
+                    placeholder="-2.00"
+                  />
+                </td>
+                
+                {/* Remarks column for milestone - properly aligned */}
+                <td className="border border-gray-300 px-1 py-1">
+                  <Input
+                    className="h-6 text-xs border-0 p-1"
+                    placeholder="Add remarks"
+                  />
                 </td>
               </tr>
             </React.Fragment>

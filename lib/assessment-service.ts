@@ -23,6 +23,9 @@ export interface ObjectiveData {
     name: string;
     code: string;
     color: string;
+    score?: number;
+    score_color?: string;
+    score_label?: string;
   };
   indicators: IndicatorData[];
   score?: ObjectiveScoreData;
@@ -363,6 +366,52 @@ class AssessmentService {
     return this.makeRequest(`/assessments/indicator-scores/${indicatorScoreId}/recalculate/`, {
       method: 'POST',
     });
+  }
+
+  async saveAssessment(params: {
+    name: string;
+    org_unit_id: string;
+    org_unit_name: string;
+    periods: string[];
+    indicator_data: Record<string, any>;
+    calculated_scores?: Record<string, any>;
+    user_notes?: string;
+    metadata?: Record<string, any>;
+  }): Promise<any> {
+    const response = await this.makeRequest('/assessments/holistic/save_assessment/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+    return response;
+  }
+
+  async getSavedAssessments(params: {
+    org_unit_id?: string;
+  }): Promise<any> {
+    const queryParams = new URLSearchParams();
+    if (params.org_unit_id) {
+      queryParams.append('org_unit_id', params.org_unit_id);
+    }
+    
+    const response = await this.makeRequest(`/assessments/holistic/get_saved_assessments/?${queryParams}`);
+    return response;
+  }
+
+  async loadAssessment(params: {
+    assessment_id: string;
+  }): Promise<any> {
+    const response = await this.makeRequest(`/assessments/holistic/get_assessment/${params.assessment_id}/`);
+    return response;
+  }
+
+  async deleteAssessment(params: { assessment_id: string }): Promise<any> {
+    const response = await this.makeRequest(`/assessments/holistic/delete_assessment/${params.assessment_id}/`, {
+      method: 'DELETE'
+    });
+    return response;
   }
 
   async exportAssessmentReport(params: {
