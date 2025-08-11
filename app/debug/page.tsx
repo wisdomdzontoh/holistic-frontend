@@ -24,7 +24,7 @@ export default function DebugPage() {
       debugService.logDebugInfo(info);
     } catch (error) {
       console.error('Debug error:', error);
-      setDebugInfo({ error: error.message });
+      setDebugInfo({ error: error instanceof Error ? error.message : String(error) });
     } finally {
       setLoading(false);
     }
@@ -38,7 +38,7 @@ export default function DebugPage() {
       alert(`Login test completed. Check console for details. Status: ${result.status}`);
     } catch (error) {
       console.error('Login test error:', error);
-      alert(`Login test failed: ${error.message}`);
+      alert(`Login test failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setLoading(false);
     }

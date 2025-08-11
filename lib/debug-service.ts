@@ -18,7 +18,8 @@ class DebugService {
       sessionStatus: null,
       authStatus: null,
       corsTest: null,
-      apiTest: null
+      apiTest: null,
+      authTest: null
     };
 
     try {
@@ -32,7 +33,7 @@ class DebugService {
         data: await sessionResponse.json().catch(() => 'Failed to parse JSON')
       };
     } catch (error) {
-      results.sessionStatus = { error: error.message };
+      results.sessionStatus = { error: error instanceof Error ? error.message : String(error) };
     }
 
     try {
@@ -46,7 +47,7 @@ class DebugService {
         data: await authResponse.json().catch(() => 'Failed to parse JSON')
       };
     } catch (error) {
-      results.authStatus = { error: error.message };
+      results.authStatus = { error: error instanceof Error ? error.message : String(error) };
     }
 
     try {
@@ -60,7 +61,7 @@ class DebugService {
         data: await authResponse.json().catch(() => 'Failed to parse JSON')
       };
     } catch (error) {
-      results.authStatus = { error: error.message };
+      results.authStatus = { error: error instanceof Error ? error.message : String(error) };
     }
 
     try {
@@ -74,7 +75,7 @@ class DebugService {
         data: await authTestResponse.json().catch(() => 'Failed to parse JSON')
       };
     } catch (error) {
-      results.authTest = { error: error.message };
+      results.authTest = { error: error instanceof Error ? error.message : String(error) };
     }
 
     try {
@@ -98,7 +99,7 @@ class DebugService {
         }
       };
     } catch (error) {
-      results.corsTest = { error: error.message };
+      results.corsTest = { error: error instanceof Error ? error.message : String(error) };
     }
 
     try {
@@ -112,7 +113,7 @@ class DebugService {
         data: await apiResponse.json().catch(() => 'Failed to parse JSON')
       };
     } catch (error) {
-      results.apiTest = { error: error.message };
+      results.apiTest = { error: error instanceof Error ? error.message : String(error) };
     }
 
     return results;
@@ -138,7 +139,7 @@ class DebugService {
         }
       };
     } catch (error) {
-      return { error: error.message };
+      return { error: error instanceof Error ? error.message : String(error) };
     }
   }
 
