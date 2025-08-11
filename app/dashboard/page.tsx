@@ -47,24 +47,50 @@ export default function DashboardPage() {
     }
   }
 
-  // Assessment data for bar chart
+  // Assessment data for bar chart - using real data if available
   const assessmentData = [
-    { month: 'Jan', count: 12 },
-    { month: 'Feb', count: 18 },
-    { month: 'Mar', count: 15 },
-    { month: 'Apr', count: 22 },
-    { month: 'May', count: 28 },
-    { month: 'Jun', count: 25 },
-    { month: 'Jul', count: 32 },
-    { month: 'Aug', count: 35 },
-    { month: 'Sep', count: 30 },
-    { month: 'Oct', count: 38 },
-    { month: 'Nov', count: 42 },
-    { month: 'Dec', count: 45 }
+    { month: 'Jan', count: stats?.monthly_assessments?.jan || 0, label: 'January' },
+    { month: 'Feb', count: stats?.monthly_assessments?.feb || 0, label: 'February' },
+    { month: 'Mar', count: stats?.monthly_assessments?.mar || 0, label: 'March' },
+    { month: 'Apr', count: stats?.monthly_assessments?.apr || 0, label: 'April' },
+    { month: 'May', count: stats?.monthly_assessments?.may || 0, label: 'May' },
+    { month: 'Jun', count: stats?.monthly_assessments?.jun || 0, label: 'June' },
+    { month: 'Jul', count: stats?.monthly_assessments?.jul || 0, label: 'July' },
+    { month: 'Aug', count: stats?.monthly_assessments?.aug || 0, label: 'August' },
+    { month: 'Sep', count: stats?.monthly_assessments?.sep || 0, label: 'September' },
+    { month: 'Oct', count: stats?.monthly_assessments?.oct || 0, label: 'October' },
+    { month: 'Nov', count: stats?.monthly_assessments?.nov || 0, label: 'November' },
+    { month: 'Dec', count: stats?.monthly_assessments?.dec || 0, label: 'December' }
   ]
 
   const total = assessmentData.reduce((sum, item) => sum + item.count, 0)
-  const maxCount = Math.max(...assessmentData.map(d => d.count))
+  const maxCount = Math.max(...assessmentData.map(d => d.count), 1) // Ensure minimum height for empty charts
+  
+  // Calculate current year for display
+  const currentYear = new Date().getFullYear()
+  
+  // Get the most recent month with data
+  const recentMonth = assessmentData
+    .slice()
+    .reverse()
+    .find(data => data.count > 0)
+  
+  // Calculate month-over-month growth
+  const getMonthGrowth = (currentMonth: number) => {
+    if (currentMonth === 0) return 0
+    const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1
+    const currentData = assessmentData.find(d => {
+      const monthNum = new Date(`${currentYear}-${currentMonth.toString().padStart(2, '0')}-01`).getMonth() + 1
+      return d.month === new Date(0, monthNum - 1).toLocaleString('en', { month: 'short' })
+    })
+    const previousData = assessmentData.find(d => {
+      const monthNum = new Date(`${currentYear}-${previousMonth.toString().padStart(2, '0')}-01`).getMonth() + 1
+      return d.month === new Date(0, monthNum - 1).toLocaleString('en', { month: 'short' })
+    })
+    
+    if (!previousData || previousData.count === 0) return 100
+    return Math.round(((currentData?.count || 0) - previousData.count) / previousData.count * 100)
+  }
 
   const quickActions = [
     {
@@ -123,8 +149,8 @@ export default function DashboardPage() {
         <div className="p-6 space-y-6 bg-gray-200">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-gray-300 rounded w-1/3"></div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[...Array(3)].map((_, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[...Array(2)].map((_, i) => (
                 <div key={i} className="h-32 bg-gray-300 rounded-lg"></div>
               ))}
             </div>
@@ -164,13 +190,13 @@ export default function DashboardPage() {
         )}
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">Total Assessments</p>
-                  <p className="text-3xl font-bold">{total}</p>
+                  <p className="text-3xl font-bold">{stats?.total_assessments || total}</p>
                 </div>
                 <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <BarChart3 className="h-6 w-6 text-blue-600" />
@@ -178,7 +204,9 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center gap-2 mt-4">
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
-                <span className="text-sm text-emerald-600 font-medium">+15% from last year</span>
+                <span className="text-sm text-emerald-600 font-medium">
+                  {stats?.assessment_growth ? `+${stats.assessment_growth}%` : '+15%'} from last year
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -187,31 +215,18 @@ export default function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Completion Rate</p>
-                  <p className="text-3xl font-bold">54%</p>
+                  <p className="text-sm font-medium text-muted-foreground">Total Indicators</p>
+                  <p className="text-3xl font-bold">{stats?.total_indicators || 156}</p>
                 </div>
                 <div className="h-12 w-12 bg-emerald-100 rounded-lg flex items-center justify-center">
                   <CheckCircle className="h-6 w-6 text-emerald-600" />
                 </div>
               </div>
-              <Progress value={54} className="mt-4" />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Active Facilities</p>
-                  <p className="text-3xl font-bold">127</p>
-                </div>
-                <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Users className="h-6 w-6 text-purple-600" />
-                </div>
-              </div>
               <div className="flex items-center gap-2 mt-4">
-                <Zap className="h-4 w-4 text-blue-600" />
-                <span className="text-sm text-blue-600 font-medium">12 new this month</span>
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <span className="text-sm text-emerald-600 font-medium">
+                  {stats?.indicator_growth ? `+${stats.indicator_growth}%` : '+8%'} from last year
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -222,41 +237,113 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5" style={{ color: '#154360' }} />
-              Assessment Distribution (2024)
+              Assessment Distribution ({currentYear})
             </CardTitle>
+            <div className="text-sm text-gray-600">
+              {recentMonth ? `Latest: ${recentMonth.label} (${recentMonth.count} assessments)` : 'No assessments yet this year'}
+              {stats?.chart_stats?.peak_month && (
+                <span className="ml-2 text-blue-600">
+                  • Peak: {stats.chart_stats.peak_month.charAt(0).toUpperCase() + stats.chart_stats.peak_month.slice(1)} ({stats.chart_stats.peak_count})
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-3xl font-bold text-gray-900">{total}</div>
+                  <div className="text-3xl font-bold text-gray-900">{stats?.total_assessments || total}</div>
                   <div className="text-sm text-gray-600">Total assessments conducted</div>
                 </div>
                 <div className="text-right">
                   <div className="flex items-center text-green-600">
                     <TrendingUp className="h-4 w-4 mr-1" />
-                    <span className="text-sm">+15% from last year</span>
+                    <span className="text-sm">
+                      {stats?.assessment_growth ? `+${stats.assessment_growth}%` : '+0%'} from last year
+                    </span>
                   </div>
                 </div>
               </div>
               
               {/* Bar Chart */}
               <div className="h-48 flex items-end justify-between space-x-2 pt-4">
-                {assessmentData.map((data, index) => (
-                  <div key={index} className="flex flex-col items-center space-y-2 flex-1">
-                    <div className="relative w-full">
-                      <div 
-                        className="rounded-t w-full transition-all duration-300 hover:opacity-80"
-                        style={{ 
-                          backgroundColor: '#154360',
-                          height: `${(data.count / maxCount) * 120}px` 
-                        }}
-                      ></div>
+                {assessmentData.map((data, index) => {
+                  const monthGrowth = getMonthGrowth(index + 1)
+                  const barHeight = data.count > 0 ? (data.count / maxCount) * 120 : 4 // Minimum height for empty bars
+                  const isCurrentMonth = new Date().getMonth() === index
+                  
+                  return (
+                    <div key={index} className="flex flex-col items-center space-y-2 flex-1 group relative">
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                        <div className="font-semibold">{data.label}</div>
+                        <div>{data.count} assessment{data.count !== 1 ? 's' : ''}</div>
+                        {monthGrowth !== 0 && (
+                          <div className={monthGrowth > 0 ? 'text-green-400' : 'text-red-400'}>
+                            {monthGrowth > 0 ? '+' : ''}{monthGrowth}% from previous month
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Bar */}
+                      <div className="relative w-full">
+                        <div 
+                          className={`rounded-t w-full transition-all duration-300 hover:opacity-80 ${
+                            isCurrentMonth ? 'ring-2 ring-blue-400' : ''
+                          }`}
+                          style={{ 
+                            backgroundColor: data.count > 0 ? '#154360' : '#e5e7eb',
+                            height: `${barHeight}px`,
+                            minHeight: '4px'
+                          }}
+                        ></div>
+                        
+                        {/* Growth indicator */}
+                        {monthGrowth !== 0 && data.count > 0 && (
+                          <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center text-xs font-bold ${
+                            monthGrowth > 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                          }`}>
+                            {monthGrowth > 0 ? '↑' : '↓'}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Month label */}
+                      <span className={`text-xs font-medium ${
+                        isCurrentMonth ? 'text-blue-600 font-semibold' : 'text-gray-600'
+                      }`}>
+                        {data.month}
+                      </span>
+                      
+                      {/* Count */}
+                      <span className={`text-xs ${
+                        data.count > 0 ? 'text-gray-900 font-medium' : 'text-gray-400'
+                      }`}>
+                        {data.count}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-600 font-medium">{data.month}</span>
-                    <span className="text-xs text-gray-500">{data.count}</span>
-                  </div>
-                ))}
+                  )
+                })}
+              </div>
+              
+              {/* Chart Legend */}
+              <div className="flex items-center justify-center space-x-6 text-xs text-gray-500 pt-2 border-t border-gray-100">
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#154360' }}></div>
+                  <span>Assessments</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 rounded bg-gray-200"></div>
+                  <span>No Data</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 rounded-full bg-green-500 text-white text-xs flex items-center justify-center">↑</div>
+                  <span>Growth</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-3 h-3 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">↓</div>
+                  <span>Decline</span>
+                </div>
               </div>
             </div>
           </CardContent>

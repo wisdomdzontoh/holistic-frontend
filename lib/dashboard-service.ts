@@ -7,6 +7,29 @@ export interface DashboardStats {
   total_objectives: number;
   recent_assessments: number;
   average_sector_score: number;
+  assessment_growth?: number;
+  indicator_growth?: number;
+  monthly_assessments?: {
+    jan: number;
+    feb: number;
+    mar: number;
+    apr: number;
+    may: number;
+    jun: number;
+    jul: number;
+    aug: number;
+    sep: number;
+    oct: number;
+    nov: number;
+    dec: number;
+  };
+  chart_stats?: {
+    peak_month: string | null;
+    peak_count: number;
+    average_per_month: number;
+    months_with_data: number;
+    total_months: number;
+  };
   top_performing_facilities: Array<{
     id: string;
     name: string;
@@ -61,25 +84,25 @@ export class DashboardService {
   }
 
   async getDashboardStats(): Promise<DashboardStats> {
-    return this.makeRequest('/api/dashboard/stats/', {
+    return this.makeRequest('/assessments/dashboard/stats/', {
       method: 'GET',
     });
   }
 
   async getQuickActions(): Promise<QuickAction[]> {
-    return this.makeRequest('/api/dashboard/quick-actions/', {
+    return this.makeRequest('/assessments/dashboard/quick-actions/', {
       method: 'GET',
     });
   }
 
   async getRecentAssessments(limit: number = 5): Promise<any[]> {
-    return this.makeRequest(`/api/dashboard/recent-assessments/?limit=${limit}`, {
+    return this.makeRequest(`/assessments/dashboard/recent-assessments/?limit=${limit}`, {
       method: 'GET',
     });
   }
 
   async getPerformanceTrends(periods: number = 4): Promise<any> {
-    return this.makeRequest(`/api/dashboard/performance-trends/?periods=${periods}`, {
+    return this.makeRequest(`/assessments/dashboard/performance-trends/?periods=${periods}`, {
       method: 'GET',
     });
   }
