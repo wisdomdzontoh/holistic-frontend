@@ -9,113 +9,108 @@ import {
   Search, 
   Plus, 
   Download,
-  Filter
+  Filter, 
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
+import { indicatorService, Indicator } from '@/lib/indicator-service';
+import { toast } from 'sonner';
 
 export default function IndicatorsPage() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [indicators, setIndicators] = useState<Indicator[]>([]);
+  const [objectives, setObjectives] = useState<Array<{
+    id: number;
+    name: string;
+    indicators: Indicator[];
+  }>>([]);
 
   useEffect(() => {
-    // Simulate loading
-    setTimeout(() => setLoading(false), 1000);
+    fetchIndicators();
   }, []);
 
-  const mockIndicators = [
-    {
-      id: '1.1',
-      name: 'Average revenue per OPD patient',
-      definition: 'Average Cost per patient attending OPD in the Region',
-      numerator: 'Total OPD revenue- IGF (OPD Revenue Category)',
-      denominator: 'Total OPD attendance',
-      calculation: '(N/D)',
-      source: 'Financial Report/DHIMS2',
-      target: '15',
-      isHighlighted: false
-    },
-    {
-      id: '1.2',
-      name: 'Proportion of NHIS claims submitted on time.',
-      definition: 'The total amount of internally generated funds spent on personal emolument relative to the total internally generated funds received',
-      numerator: 'Total number of rejected claims from all health facilities(Public)',
-      denominator: 'Total amount of NHIS claims submitted by ALL public facilities',
-      calculation: '(N/D)*100',
-      source: 'Regional National Health Insurance Report',
-      target: '5%',
-      isHighlighted: false
-    },
-    {
-      id: '1.3',
-      name: 'Percentage of budget allocated to research',
-      definition: 'Proportion of health budget allocated to research activities',
-      numerator: 'Total amount of budget allocated to research',
-      denominator: 'Total health budget(goods and services)',
-      calculation: '(N/D) X 100',
-      source: 'Financial Report/PBMIS',
-      target: '5%',
-      isHighlighted: false
-    },
-    {
-      id: '1.4',
-      name: 'Percentage of Quarterly Internal Audits reports available (Sub Districts)',
-      definition: 'Proportion of quarterly internal audit reports available for sub-districts',
-      numerator: 'Total number of Quarterly Internal Audits report available (Sub Districts)',
-      denominator: 'Total number of expected quarterly internal audit reports (Sub Districts)',
-      calculation: '(N/D) X 100',
-      source: 'Audit reports',
-      target: '75.0%',
-      isHighlighted: true
-    },
-    {
-      id: '1.5',
-      name: 'Percentage of internal and external audits recommendations implemented',
-      definition: 'Proportion of audit recommendations that have been implemented',
-      numerator: 'Total number of internal and external audit recommendations implemented',
-      denominator: 'Total number of internal and external audit recommendations',
-      calculation: '(N/D) X 100',
-      source: 'Management Letter/internal audit/Audit committee reports',
-      target: '80%',
-      isHighlighted: true
-    },
-    {
-      id: '1.6',
-      name: 'Percentage of DHDs Districts with Budgets for Goods and Services captured into PBMIS',
-      definition: 'Proportion of districts with budgets captured in the PBMIS system',
-      numerator: 'Total number of DHDs Districts with Budgets for Goods and Services captured into PBMIS',
-      denominator: 'Total number of DHDs Districts',
-      calculation: '(N/D) X 100',
-      source: 'PBMIS/DHIMS2',
-      target: '40.0%',
-      isHighlighted: true
-    },
-    {
-      id: '1.7',
-      name: 'Total estimated protection by contraceptive methods supplied (Couple Year Protection (CYP) for long term)',
-      definition: 'Total contraceptive protection provided through long-term methods',
-      numerator: 'SUM (CYP of all long term devices)',
-      denominator: 'N/A',
-      calculation: 'SUM (CYP of all long term devices)',
-      source: 'DHIMS2',
-      target: '350,000',
-      isHighlighted: true
+  const fetchIndicators = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const data = await indicatorService.getIndicatorsForDefinitions();
+      setObjectives(data.objectives);
+      
+      // Flatten all indicators for search functionality
+      const allIndicators = data.objectives.flatMap(obj => obj.indicators);
+      setIndicators(allIndicators);
+      
+    } catch (err) {
+      console.error('Failed to fetch indicators:', err);
+      setError('Failed to load indicator definitions. Please try again.');
+      toast.error('Failed to load indicator definitions');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
-  const filteredIndicators = mockIndicators.filter(indicator => {
-    return indicator.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           indicator.definition.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           indicator.id.toLowerCase().includes(searchTerm.toLowerCase());
-  });
+  // Filter indicators based on search term and filter type
+  const getFilteredObjectives = () => {
+    return objectives.map(objective => {
+      const filteredIndicators = objective.indicators.filter(indicator => {
+        const matchesSearch = searchTerm === '' || 
+          indicator.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          indicator.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          indicator.indicator_number.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesFilter = filterType === 'all' || 
+          (filterType === 'active' && indicator.is_active) ||
+          (filterType === 'inactive' && !indicator.is_active) ||
+          (filterType === 'dhis2' && indicator.dhis2_uid) ||
+          (filterType === 'calculated' && indicator.indicator_type === 'calculated');
+        
+        return matchesSearch && matchesFilter;
+      });
+      
+      return {
+        ...objective,
+        indicators: filteredIndicators
+      };
+    }).filter(objective => objective.indicators.length > 0);
+  };
+
+  const filteredObjectives = getFilteredObjectives();
+  const totalIndicators = indicators.length;
+  const filteredIndicatorsCount = filteredObjectives.flatMap(obj => obj.indicators).length;
 
   if (loading) {
-    return (
+  return (
       <DashboardLayout>
         <div className="p-6 bg-gray-200 min-h-screen">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-gray-300 rounded w-1/4"></div>
-            <div className="h-96 bg-gray-300 rounded-lg"></div>
-          </div>
-        </div>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-600" />
+              <p className="text-gray-600">Loading indicator definitions...</p>
+                </div>
+              </div>
+            </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+                return (
+      <DashboardLayout>
+        <div className="p-6 bg-gray-200 min-h-screen">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-600" />
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={fetchIndicators} style={{ backgroundColor: '#154360' }}>
+                Try Again
+              </Button>
+                      </div>
+                    </div>
+                  </div>
       </DashboardLayout>
     );
   }
@@ -132,16 +127,16 @@ export default function IndicatorsPage() {
                 Comprehensive list of health indicators and their definitions
               </p>
             </div>
-            <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-3">
               <Button variant="outline">
                 <Download className="h-4 w-4 mr-2" />
-                Export
+                Export Excel
               </Button>
-              <Button style={{ backgroundColor: '#154360' }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Indicator
-              </Button>
-            </div>
+              <Button variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+            </Button>
+          </div>
           </div>
         </div>
 
@@ -160,15 +155,20 @@ export default function IndicatorsPage() {
             <div className="flex items-center space-x-2">
               <Filter className="h-4 w-4 text-gray-500" />
               <span className="text-sm font-medium">Filter by:</span>
-              <select className="border border-gray-300 rounded-md px-3 py-2 text-sm">
+            <select
+                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+              >
                 <option value="all">All Indicators</option>
-                <option value="highlighted">Highlighted</option>
-                <option value="financial">Financial</option>
-                <option value="health">Health</option>
-              </select>
+                <option value="active">Active Only</option>
+                <option value="inactive">Inactive Only</option>
+                <option value="dhis2">DHIS2 Indicators</option>
+                <option value="calculated">Calculated Indicators</option>
+            </select>
             </div>
           </div>
-        </div>
+          </div>
 
         {/* Table */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -176,7 +176,10 @@ export default function IndicatorsPage() {
             <table className="w-full border-collapse">
               <thead>
                 <tr style={{ backgroundColor: '#154360' }} className="text-white">
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '15%' }}>
+                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-sm" style={{ width: '8%' }}>
+                    #
+                  </th>
+                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '20%' }}>
                     Indicator
                   </th>
                   <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '20%' }}>
@@ -191,7 +194,7 @@ export default function IndicatorsPage() {
                   <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-sm" style={{ width: '10%' }}>
                     Calculation
                   </th>
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '15%' }}>
+                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '12%' }}>
                     Source of Data
                   </th>
                   <th className="border border-gray-300 px-4 py-3 text-right font-semibold text-sm" style={{ width: '10%' }}>
@@ -200,63 +203,102 @@ export default function IndicatorsPage() {
                 </tr>
               </thead>
               <tbody>
-                {/* Objective Header Row */}
-                <tr className="bg-orange-100">
-                  <td colSpan={7} className="border border-gray-300 px-4 py-3 font-semibold text-gray-900">
-                    Objective 1: Universal access to better & efficiently managed quality healthcare services
-                  </td>
-                </tr>
-                
-                {/* Indicator Rows */}
-                {filteredIndicators.map((indicator, index) => (
-                  <tr key={indicator.id} className="hover:bg-gray-50">
-                    <td className="border border-gray-300 px-4 py-3 text-sm">
-                      <div className={`font-medium ${indicator.isHighlighted ? 'text-red-600' : 'text-gray-900'}`}>
-                        {indicator.id} {indicator.name}
-                      </div>
-                    </td>
-                    <td className="border border-gray-300 px-4 py-3 text-sm">
-                      <div className={`${indicator.isHighlighted ? 'text-red-600' : 'text-gray-700'}`}>
-                        {indicator.definition}
-                      </div>
-                    </td>
-                    <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {indicator.numerator}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {indicator.denominator}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-3 text-sm text-center text-gray-700">
-                      {indicator.calculation}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
-                      {indicator.source}
-                    </td>
-                    <td className="border border-gray-300 px-4 py-3 text-sm text-right">
-                      <div className={`font-medium ${indicator.isHighlighted ? 'text-red-600' : 'text-gray-900'}`}>
-                        {indicator.target}
-                      </div>
+                {filteredObjectives.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="border border-gray-300 px-4 py-8 text-center text-gray-500">
+                      {searchTerm || filterType !== 'all' 
+                        ? 'No indicators match your search criteria' 
+                        : 'No indicators found. Add some indicators to get started.'
+                      }
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredObjectives.map((objective) => (
+                    <React.Fragment key={objective.id}>
+                      {/* Objective Header Row */}
+                      <tr className="bg-orange-100">
+                        <td colSpan={8} className="border border-gray-300 px-4 py-3 font-semibold text-gray-900">
+                          {objective.name}
+                        </td>
+                      </tr>
+                      
+                      {/* Indicator Rows */}
+                      {objective.indicators
+                        .sort((a, b) => a.display_order - b.display_order)
+                        .map((indicator) => (
+                        <tr key={indicator.id} className="hover:bg-gray-50">
+                          {/* Number column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm text-center">
+                            <div className={`font-medium ${!indicator.is_active ? 'text-red-600' : 'text-gray-900'}`}>
+                              {indicator.indicator_number || `${objective.id}.${indicator.display_order || indicator.id}`}
+                            </div>
+                          </td>
+                          {/* Indicator name column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm">
+                            <div className={`font-medium ${!indicator.is_active ? 'text-red-600' : 'text-gray-900'}`}>
+                              {indicator.name}
+                            </div>
+                            {indicator.dhis2_uid && (
+                              <div className="text-xs text-blue-600 mt-1">
+                                DHIS2: {indicator.dhis2_uid}
+                              </div>
+                            )}
+                          </td>
+                          {/* Definition column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm">
+                            <div className={`${!indicator.is_active ? 'text-red-600' : 'text-gray-700'}`}>
+                              {indicator.description || 'No definition available'}
+                            </div>
+                          </td>
+                          {/* Numerator column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
+                            {indicator.numerator || 'N/A'}
+                          </td>
+                          {/* Denominator column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
+                            {indicator.denominator || 'N/A'}
+                          </td>
+                          {/* Calculation column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm text-center text-gray-700">
+                            {indicator.formula || 'N/A'}
+                          </td>
+                          {/* Source of Data column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
+                            {indicator.source_of_data || 'N/A'}
+                          </td>
+                          {/* Target column */}
+                          <td className="border border-gray-300 px-4 py-3 text-sm text-right">
+                            <div className={`font-medium ${!indicator.is_active ? 'text-red-600' : 'text-gray-900'}`}>
+                              {indicator.target_display || (indicator.target_value ? indicator.target_value.toString() : 'N/A')}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-        </div>
+          </div>
 
         {/* Table Info */}
         <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-          <div>
-            Showing {filteredIndicators.length} of {mockIndicators.length} indicators
-          </div>
+                      <div>
+            Showing {filteredIndicatorsCount} of {totalIndicators} indicators
+                      </div>
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-red-600 rounded"></div>
-              <span>Highlighted indicators require attention</span>
-            </div>
+              <span>Inactive indicators are highlighted in red</span>
+                      </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-blue-600 rounded"></div>
+              <span>DHIS2 indicators show UID</span>
+                        </div>
+                      </div>
+                      </div>
           </div>
-        </div>
-      </div>
     </DashboardLayout>
   );
-}
+} 

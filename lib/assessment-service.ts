@@ -428,7 +428,7 @@ class AssessmentService {
     size?: number;
     search?: string;
     ordering?: 'name'|'-name'|'created_at'|'-created_at';
-    owner?: 'mine'|'all';
+    owner?: 'mine'; // Users can only access their own assessments for security
   }, signal?: AbortSignal): Promise<{ results: any[]; count: number; page: number; size: number }> {
     const queryParams = new URLSearchParams();
     if (params.org_unit_id) queryParams.append('org_unit_id', params.org_unit_id);
@@ -436,7 +436,8 @@ class AssessmentService {
     if (params.size) queryParams.append('size', String(params.size));
     if (params.search) queryParams.append('search', params.search);
     if (params.ordering) queryParams.append('ordering', params.ordering);
-    if (params.owner) queryParams.append('owner', params.owner);
+    // Always send 'mine' for security - users can only see their own assessments
+    queryParams.append('owner', 'mine');
     const response = await this.makeRequest(`/assessments/holistic/get_saved_assessments/?${queryParams}`, { signal });
     if (response && typeof response === 'object' && Array.isArray(response.results)) {
       return { results: response.results, count: response.count || response.results.length, page: response.page || 1, size: response.size || response.results.length };

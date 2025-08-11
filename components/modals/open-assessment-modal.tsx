@@ -39,7 +39,7 @@ export function OpenAssessmentModal({
   const [pageSize, setPageSize] = useState(10);
   const [count, setCount] = useState(0);
   const [ordering, setOrdering] = useState<'name'|'-name'|'created_at'|'-created_at'>('-created_at');
-  const [owner, setOwner] = useState<'mine'|'all'>('mine');
+  const [owner, setOwner] = useState<'mine'>('mine'); // Users can only see their own assessments
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchData = async () => {
@@ -90,7 +90,7 @@ export function OpenAssessmentModal({
     if (isOpen) fetchData();
   }, [orgUnitId, page, pageSize, filter, ordering, owner]);
 
-  useEffect(()=>{ setPage(1); }, [filter, pageSize, ordering, owner]);
+  useEffect(()=>{ setPage(1); }, [filter, pageSize, ordering]); // owner is always 'mine'
   const totalPages = Math.max(1, Math.ceil((count || 0) / pageSize));
   const view = items;
 
@@ -99,6 +99,7 @@ export function OpenAssessmentModal({
       <DialogContent className="max-w-5xl p-0 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="px-6 pt-4">Open saved assessment</DialogTitle>
+          <p className="px-6 text-sm text-gray-600">You can only view and manage assessments you created</p>
         </DialogHeader>
         <div className="space-y-3 px-6 pb-4">
           <div className="flex items-center gap-2">
@@ -109,10 +110,7 @@ export function OpenAssessmentModal({
               <option value="name">Name (A-Z)</option>
               <option value="-name">Name (Z-A)</option>
             </select>
-            <select className="border rounded px-2 py-1" value={owner} onChange={(e)=>setOwner(e.target.value as any)}>
-              <option value="mine">My assessments</option>
-              <option value="all">All assessments</option>
-            </select>
+            {/* Owner filter removed - users can only see their own assessments for security */}
             <Button variant="outline" onClick={()=>fetchData()}>
               <ArrowUpDown className="h-4 w-4 mr-1" /> Refresh
             </Button>
