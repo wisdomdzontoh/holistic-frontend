@@ -1,48 +1,46 @@
-export interface DashboardSummary {
-  assessment_period: string;
-  total_org_units: number;
-  org_units_with_scores: number;
-  average_score: number;
-  max_score: number;
-  min_score: number;
-  performance_distribution: Record<string, number>;
-  sector_scores: Array<{
-    org_unit_id: number;
-    org_unit_name: string;
+import { authService } from './auth-service';
+
+export interface DashboardStats {
+  total_assessments: number;
+  total_facilities: number;
+  total_indicators: number;
+  total_objectives: number;
+  recent_assessments: number;
+  average_sector_score: number;
+  top_performing_facilities: Array<{
+    id: string;
+    name: string;
     score: number;
-    color: string;
-    label: string;
+    score_color: string;
+    score_label: string;
   }>;
+  recent_activity: Array<{
+    id: string;
+    type: 'assessment_created' | 'assessment_updated' | 'data_synced' | 'score_calculated';
+    title: string;
+    description: string;
+    timestamp: string;
+    user: string;
+  }>;
+  performance_summary: {
+    excellent: number;
+    satisfactory: number;
+    needs_improvement: number;
+    underperforming: number;
+  };
 }
 
-export interface Assessment {
+export interface QuickAction {
   id: string;
-  facility: string;
-  period: string;
-  score: number;
-  status: 'completed' | 'in_progress' | 'pending' | 'failed';
-  lastUpdated: string;
-  indicators: number;
+  title: string;
+  description: string;
+  icon: string;
+  href: string;
+  color: string;
 }
 
-export interface Indicator {
-  id: string;
-  name: string;
-  dhis2Uid: string;
-  category: string;
-  target: number;
-  currentValue: number;
-  performance: number;
-  status: 'excellent' | 'good' | 'needs_improvement' | 'poor';
-  lastUpdated: string;
-}
-
-class DashboardService {
-  private baseUrl: string;
-
-  constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-  }
+export class DashboardService {
+  private baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
   private async makeRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
@@ -62,209 +60,27 @@ class DashboardService {
     return response.json();
   }
 
-  // Dashboard Overview
-  async getDashboardSummary(): Promise<DashboardSummary> {
-    try {
-      const data = await this.makeRequest<DashboardSummary>('/assessments/dashboard/summary/');
-      return data;
-    } catch (error) {
-      console.error('Error fetching dashboard summary:', error);
-      throw error;
-    }
+  async getDashboardStats(): Promise<DashboardStats> {
+    return this.makeRequest('/api/dashboard/stats/', {
+      method: 'GET',
+    });
   }
 
-  // Assessments
-  async getAssessments(): Promise<Assessment[]> {
-    try {
-      const data = await this.makeRequest<Assessment[]>('/assessments/indicator-scores/');
-      return data;
-    } catch (error) {
-      console.error('Error fetching assessments:', error);
-      // Return mock data for now
-      return [
-        {
-          id: '1',
-          facility: 'Korle Bu Teaching Hospital',
-          period: 'Q4-2024',
-          score: 4.5,
-          status: 'completed',
-          lastUpdated: '2024-01-15',
-          indicators: 156
-        },
-        {
-          id: '2',
-          facility: 'Ridge Hospital',
-          period: 'Q4-2024',
-          score: 3.8,
-          status: 'in_progress',
-          lastUpdated: '2024-01-14',
-          indicators: 142
-        },
-        {
-          id: '3',
-          facility: '37 Military Hospital',
-          period: 'Q4-2024',
-          score: 4.2,
-          status: 'completed',
-          lastUpdated: '2024-01-13',
-          indicators: 134
-        },
-        {
-          id: '4',
-          facility: 'La General Hospital',
-          period: 'Q4-2024',
-          score: 0,
-          status: 'failed',
-          lastUpdated: '2024-01-12',
-          indicators: 0
-        }
-      ];
-    }
+  async getQuickActions(): Promise<QuickAction[]> {
+    return this.makeRequest('/api/dashboard/quick-actions/', {
+      method: 'GET',
+    });
   }
 
-  // Indicators
-  async getIndicators(): Promise<Indicator[]> {
-    try {
-      const data = await this.makeRequest<Indicator[]>('/indicators/');
-      return data;
-    } catch (error) {
-      console.error('Error fetching indicators:', error);
-      // Return mock data for now
-      return [
-        {
-          id: '1',
-          name: 'EPI - BCG Coverage (%)',
-          dhis2Uid: 'abc123',
-          category: 'Immunization',
-          target: 90,
-          currentValue: 85,
-          performance: 94.4,
-          status: 'good',
-          lastUpdated: '2024-01-15'
-        },
-        {
-          id: '2',
-          name: 'EPI - Penta 1 Coverage (%)',
-          dhis2Uid: 'def456',
-          category: 'Immunization',
-          target: 90,
-          currentValue: 92,
-          performance: 102.2,
-          status: 'excellent',
-          lastUpdated: '2024-01-15'
-        },
-        {
-          id: '3',
-          name: 'Maternal Health - ANC Attendance',
-          dhis2Uid: 'ghi789',
-          category: 'Maternal Health',
-          target: 80,
-          currentValue: 75,
-          performance: 93.8,
-          status: 'good',
-          lastUpdated: '2024-01-14'
-        },
-        {
-          id: '4',
-          name: 'Child Health - Growth Monitoring',
-          dhis2Uid: 'jkl012',
-          category: 'Child Health',
-          target: 70,
-          currentValue: 65,
-          performance: 92.9,
-          status: 'good',
-          lastUpdated: '2024-01-13'
-        },
-        {
-          id: '5',
-          name: 'Staff Availability - Nurses',
-          dhis2Uid: 'mno345',
-          category: 'Human Resources',
-          target: 100,
-          currentValue: 45,
-          performance: 45.0,
-          status: 'poor',
-          lastUpdated: '2024-01-12'
-        }
-      ];
-    }
+  async getRecentAssessments(limit: number = 5): Promise<any[]> {
+    return this.makeRequest(`/api/dashboard/recent-assessments/?limit=${limit}`, {
+      method: 'GET',
+    });
   }
 
-  // Calculate Scores
-  async calculateScores(params: {
-    orgUnitIds?: string[];
-    assessmentPeriodId?: number;
-    objectiveIds?: number[];
-    indicatorIds?: number[];
-    forceRecalculate?: boolean;
-  }): Promise<{ success: boolean; message: string }> {
-    try {
-      const response = await this.makeRequest<{ success: boolean; message: string }>(
-        '/assessments/management/calculate-scores/',
-        {
-          method: 'POST',
-          body: JSON.stringify(params),
-        }
-      );
-      return response;
-    } catch (error) {
-      console.error('Error calculating scores:', error);
-      return { success: false, message: 'Failed to calculate scores' };
-    }
+  async getPerformanceTrends(periods: number = 4): Promise<any> {
+    return this.makeRequest(`/api/dashboard/performance-trends/?periods=${periods}`, {
+      method: 'GET',
+    });
   }
-
-  // Sync Data
-  async syncData(params: {
-    syncType?: string;
-    dhis2InstanceUrl?: string;
-    periodStart?: string;
-    periodEnd?: string;
-    orgUnitIds?: string[];
-    indicatorUids?: string[];
-    calculateScores?: boolean;
-  }): Promise<{ success: boolean; message: string }> {
-    try {
-      const response = await this.makeRequest<{ success: boolean; message: string }>(
-        '/assessments/sync-logs/trigger_sync/',
-        {
-          method: 'POST',
-          body: JSON.stringify(params),
-        }
-      );
-      return response;
-    } catch (error) {
-      console.error('Error syncing data:', error);
-      return { success: false, message: 'Failed to sync data' };
-    }
-  }
-
-  // Export Data
-  async exportData(params: {
-    format: 'excel' | 'csv' | 'pdf';
-    filters: any;
-    includeCharts?: boolean;
-    includeDetails?: boolean;
-  }): Promise<Blob> {
-    try {
-      const response = await fetch(`${this.baseUrl}/exports/export/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Export failed: ${response.status} ${response.statusText}`);
-      }
-
-      return response.blob();
-    } catch (error) {
-      console.error('Error exporting data:', error);
-      throw error;
-    }
-  }
-}
-
-export const dashboardService = new DashboardService(); 
+} 

@@ -6,12 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { 
-  Bell, 
-  Mail, 
-  Grid3X3, 
-  LogOut,
-  Settings,
-  User
+  LogOut
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -43,7 +38,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   };
 
   return (
-    <header className="text-white shadow-lg border-b" style={{ background: 'linear-gradient(to right, #265380, #1e4a6b)' }}>
+    <header className="text-white shadow-lg border-b" style={{ backgroundColor: '#154360', borderColor: '#2E86AB' }}>
       <div className="flex items-center justify-between px-6 py-4">
         {/* Left side - Logo and Title */}
         <div className="flex items-center space-x-4">
@@ -61,7 +56,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-wide">HOLISTIC ASSESSMENT</h1>
-              <p className="text-sm font-medium" style={{ color: '#b3d9ff' }}>Health Facility Assessment Tool</p>
+              <p className="text-sm font-medium text-gray-300">Health Facility Assessment Tool</p>
             </div>
           </div>
         </div>
@@ -74,30 +69,12 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             <span className="text-sm font-medium">Online</span>
           </div>
 
-          {/* Notifications */}
-          <Button variant="ghost" size="sm" className="text-white relative" style={{ '--tw-bg-opacity': '0.5' } as React.CSSProperties}>
-            <Bell className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] flex items-center justify-center">
-              3
-            </span>
-          </Button>
-
-          {/* Messages */}
-          <Button variant="ghost" size="sm" className="text-white">
-            <Mail className="h-5 w-5" />
-          </Button>
-
-          {/* App launcher */}
-          <Button variant="ghost" size="sm" className="text-white">
-            <Grid3X3 className="h-5 w-5" />
-          </Button>
-
           {/* User menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="text-white">
-                <Avatar className="h-8 w-8 border-2" style={{ borderColor: '#265380' }}>
-                  <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: '#265380' }}>
+              <Button variant="ghost" className="text-white hover:bg-white/10">
+                <Avatar className="h-8 w-8 border-2" style={{ borderColor: '#2E86AB' }}>
+                  <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: '#2E86AB' }}>
                     {getUserInitials(user?.dhis2_username || 'User')}
                   </AvatarFallback>
                 </Avatar>
@@ -108,15 +85,6 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel className="font-semibold">My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
                 <LogOut className="mr-2 h-4 w-4" />

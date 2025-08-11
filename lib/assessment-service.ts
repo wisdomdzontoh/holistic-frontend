@@ -370,26 +370,7 @@ class AssessmentService {
     });
   }
 
-  async overrideIndicatorScore(
-    indicatorScoreId: number,
-    overrideData: {
-      score: number;
-      reason: string;
-      score_color?: string;
-      score_label?: string;
-    }
-  ): Promise<any> {
-    return this.makeRequest(`/assessments/indicator-scores/${indicatorScoreId}/override_score/`, {
-      method: 'POST',
-      body: JSON.stringify(overrideData),
-    });
-  }
 
-  async recalculateIndicatorScore(indicatorScoreId: number): Promise<any> {
-    return this.makeRequest(`/assessments/indicator-scores/${indicatorScoreId}/recalculate/`, {
-      method: 'POST',
-    });
-  }
 
   async saveAssessment(params: {
     name: string;

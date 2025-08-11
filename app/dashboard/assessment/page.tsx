@@ -1309,7 +1309,7 @@ export default function AssessmentPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="p-6 bg-gray-200 min-h-screen">
 
 
         {/* Error Display */}

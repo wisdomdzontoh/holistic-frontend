@@ -14,8 +14,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-200">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2" style={{ borderColor: '#2E86AB' }}></div>
       </div>
     );
   }
@@ -25,7 +25,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-200 flex flex-col">
       <DashboardHeader user={user} />
       <div className="flex flex-1">
         <DashboardSidebar />
@@ -34,14 +34,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
       </div>
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-3 px-6">
-        <p className="text-xs text-gray-500 text-center">
+      <footer className="text-white border-t py-3 px-6" style={{ backgroundColor: '#154360', borderColor: '#2E86AB' }}>
+        <p className="text-xs text-center text-gray-300">
           Designed by{' '}
           <a
             href="https://wisdomdzontoh.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 underline"
+            className="text-white hover:text-gray-200 underline"
           >
             Wisdom Dzontoh
           </a>

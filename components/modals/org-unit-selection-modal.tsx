@@ -384,13 +384,13 @@ export function OrgUnitSelectionModal({
                   <Badge 
                     key={selectedUnits[index]} 
                     variant="secondary" 
-                    style={{ backgroundColor: '#e6f3ff', color: '#265380', borderColor: '#265380' }}
+                    style={{ backgroundColor: '#e6f3ff', color: '#154360', borderColor: '#154360' }}
                   >
                     {name}
                     <button
                       onClick={() => toggleOrgUnitSelection(selectedUnits[index])}
                       className="ml-1 hover:text-blue-800"
-                      style={{ color: '#265380' }}
+                      style={{ color: '#154360' }}
                     >
                       ×
                     </button>
@@ -413,7 +413,7 @@ export function OrgUnitSelectionModal({
           <Button 
             onClick={handleUpdate}
             className="text-white hover:opacity-90" 
-            style={{ backgroundColor: '#265380' }}
+            style={{ backgroundColor: '#154360' }}
           >
             Update
           </Button>

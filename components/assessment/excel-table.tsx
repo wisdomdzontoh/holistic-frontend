@@ -181,7 +181,7 @@ export default function ExcelTable({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse border border-gray-300 text-sm">
         <thead>
-          <tr className="bg-blue-600 text-white">
+          <tr style={{ backgroundColor: '#154360' }} className="text-white">
             <th className="border border-gray-300 px-2 py-2 text-left font-medium" style={{ width: '50px' }}>
               #
             </th>

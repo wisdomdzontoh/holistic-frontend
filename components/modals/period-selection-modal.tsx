@@ -128,7 +128,7 @@ export default function PeriodSelectionModal({
               <button className="px-4 py-2 text-sm text-gray-500 border-b-2 border-transparent">
                 Relative periods
               </button>
-              <button className="px-4 py-2 text-sm font-medium text-gray-800 border-b-2" style={{ borderColor: '#265380', color: '#265380' }}>
+              <button className="px-4 py-2 text-sm font-medium text-gray-800 border-b-2" style={{ borderColor: '#154360', color: '#154360' }}>
                 Fixed periods
               </button>
             </div>
@@ -185,7 +185,7 @@ export default function PeriodSelectionModal({
                       >
                         <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
                           isSelected ? 'border-blue-600' : 'border-gray-300'
-                        }`} style={isSelected ? { backgroundColor: '#265380', borderColor: '#265380' } : {}}>
+                        }`} style={isSelected ? { backgroundColor: '#154360', borderColor: '#154360' } : {}}>
                           {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
                         </div>
                         <span className="text-sm text-gray-700">{period.displayName}</span>
@@ -205,7 +205,7 @@ export default function PeriodSelectionModal({
               onClick={handleMoveToSelected}
               disabled={selectedAvailablePeriods.length === 0 || localSelectedPeriods.length >= maxPeriods}
               className="w-10 h-10 p-0 hover:bg-blue-50"
-              style={{ borderColor: '#265380', color: '#265380' }}
+              style={{ borderColor: '#154360', color: '#154360' }}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -215,7 +215,7 @@ export default function PeriodSelectionModal({
               onClick={handleMoveAllToSelected}
               disabled={availablePeriods.length === 0 || localSelectedPeriods.length >= maxPeriods}
               className="w-10 h-10 p-0 hover:bg-blue-50"
-              style={{ borderColor: '#265380', color: '#265380' }}
+              style={{ borderColor: '#154360', color: '#154360' }}
             >
               <ChevronsRight className="h-4 w-4" />
             </Button>
@@ -225,7 +225,7 @@ export default function PeriodSelectionModal({
               onClick={handleMoveToAvailable}
               disabled={selectedAvailablePeriods.length === 0}
               className="w-10 h-10 p-0 hover:bg-blue-50"
-              style={{ borderColor: '#265380', color: '#265380' }}
+              style={{ borderColor: '#154360', color: '#154360' }}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -235,7 +235,7 @@ export default function PeriodSelectionModal({
               onClick={handleMoveAllToAvailable}
               disabled={localSelectedPeriods.length === 0}
               className="w-10 h-10 p-0 hover:bg-blue-50"
-              style={{ borderColor: '#265380', color: '#265380' }}
+              style={{ borderColor: '#154360', color: '#154360' }}
             >
               <ChevronsLeft className="h-4 w-4" />
             </Button>
@@ -293,7 +293,7 @@ export default function PeriodSelectionModal({
               onClose();
             }}
             className="text-white"
-            style={{ backgroundColor: '#265380' }}
+            style={{ backgroundColor: '#154360' }}
           >
             Update
             </Button>

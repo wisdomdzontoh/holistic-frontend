@@ -201,7 +201,7 @@ export function OpenAssessmentModal({
                 onClose();
               }}
               disabled={!selectedId}
-              style={{ backgroundColor: '#265380' }}
+              style={{ backgroundColor: '#154360' }}
               className="text-white"
             >Open</Button>
           </div>
@@ -248,7 +248,7 @@ export function NameAssessmentModal({
           <Input value={name} onChange={(e)=>setName(e.target.value)} placeholder="Enter a descriptive name" />
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button className="text-white" style={{backgroundColor:'#265380'}} onClick={()=>{ if(name.trim()){ onConfirm(name.trim()); onClose(); } }}>Save</Button>
+            <Button className="text-white" style={{backgroundColor:'#154360'}} onClick={()=>{ if(name.trim()){ onConfirm(name.trim()); onClose(); } }}>Save</Button>
           </div>
         </div>
       </DialogContent>
@@ -281,7 +281,7 @@ export function ConfirmModal({
           <p>{message}</p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button className="text-white" style={{backgroundColor:'#265380'}} onClick={()=>{onConfirm(); onClose();}}>{confirmText}</Button>
+            <Button className="text-white" style={{backgroundColor:'#154360'}} onClick={()=>{onConfirm(); onClose();}}>{confirmText}</Button>
           </div>
         </div>
       </DialogContent>
