@@ -601,6 +601,12 @@ class AssessmentService {
     
     return this.makeRequest(`/assessments/dashboard/indicators/?${params}`);
   }
+
+  async getAnalysisData(assessmentId: string): Promise<any> {
+    const params = new URLSearchParams();
+    params.append('assessment_id', assessmentId);
+    return this.makeRequest(`/assessments/dashboard/analysis-data/?${params}`);
+  }
 }
 
 export const assessmentService = new AssessmentService();

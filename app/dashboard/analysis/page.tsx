@@ -9,48 +9,71 @@ import {
   BarChart3, 
   Search, 
   Play,
-  Loader2
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
+import { assessmentService } from '@/lib/assessment-service';
+import { toast } from 'sonner';
 
 interface SavedAssessment {
   id: string;
   name: string;
-  date: string;
-  facility: string;
-  period: string;
+  org_unit_name: string;
+  created_at: string;
+  total_indicators: number;
+  total_objectives: number;
 }
 
 interface ObjectiveScore {
-  id: string;
+  id: number;
   name: string;
   score: number;
 }
 
 interface AssessmentData {
+  assessment: SavedAssessment;
   objectives: ObjectiveScore[];
-  overallScore: number;
+  overall_score: number;
 }
 
 export default function AnalysisPage() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [generatingCharts, setGeneratingCharts] = useState(false);
   const [selectedAssessment, setSelectedAssessment] = useState<SavedAssessment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
+  const [savedAssessments, setSavedAssessments] = useState<SavedAssessment[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock saved assessments
-  const savedAssessments: SavedAssessment[] = [
-    { id: '1', name: 'Q4 2024 Assessment - Central Hospital', date: '2024-12-15', facility: 'Central Hospital', period: 'Q4 2024' },
-    { id: '2', name: 'Q3 2024 Assessment - Regional Clinic', date: '2024-09-30', facility: 'Regional Clinic', period: 'Q3 2024' },
-    { id: '3', name: 'Q2 2024 Assessment - Community Health Center', date: '2024-06-30', facility: 'Community Health Center', period: 'Q2 2024' },
-    { id: '4', name: 'Q1 2024 Assessment - Central Hospital', date: '2024-03-31', facility: 'Central Hospital', period: 'Q1 2024' },
-  ];
+  // Fetch saved assessments on component mount
+  useEffect(() => {
+    fetchSavedAssessments();
+  }, []);
+
+  const fetchSavedAssessments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await assessmentService.getSavedAssessments({
+        owner: 'mine',
+        size: 100 // Get more assessments for the dropdown
+      });
+      
+      setSavedAssessments(response.results || []);
+    } catch (err) {
+      console.error('Failed to fetch saved assessments:', err);
+      setError('Failed to load saved assessments. Please try again.');
+      toast.error('Failed to load saved assessments');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredAssessments = savedAssessments.filter(assessment =>
     assessment.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    assessment.facility.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    assessment.period.toLowerCase().includes(searchTerm.toLowerCase())
+    assessment.org_unit_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const generateCharts = async () => {
@@ -58,23 +81,17 @@ export default function AnalysisPage() {
     
     setGeneratingCharts(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Mock assessment data
-    const mockData: AssessmentData = {
-      objectives: [
-        { id: '1', name: 'Objective 1', score: 1.3 },
-        { id: '2', name: 'Objective 2', score: 2.9 },
-        { id: '3', name: 'Objective 3', score: 1.8 },
-        { id: '4', name: 'Objective 4', score: 3.2 },
-        { id: '5', name: 'Objective 5', score: 2.1 },
-      ],
-      overallScore: 2.0
-    };
-    
-    setAssessmentData(mockData);
-    setGeneratingCharts(false);
+    try {
+      // Fetch analysis data from backend
+      const data = await assessmentService.getAnalysisData(selectedAssessment.id);
+      setAssessmentData(data);
+      toast.success('Analysis data loaded successfully');
+    } catch (err) {
+      console.error('Failed to generate charts:', err);
+      toast.error('Failed to generate analysis charts');
+    } finally {
+      setGeneratingCharts(false);
+    }
   };
 
   const getScoreColor = (score: number) => {
@@ -167,6 +184,41 @@ export default function AnalysisPage() {
     </Card>
   );
 
+  // Show loading state while fetching assessments
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="p-6 bg-gray-200 min-h-screen">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" style={{ color: '#154360' }} />
+              <p className="text-gray-600">Loading saved assessments...</p>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="p-6 bg-gray-200 min-h-screen">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-600" />
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={fetchSavedAssessments} style={{ backgroundColor: '#154360' }}>
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="p-6 bg-gray-200 min-h-screen">
@@ -224,7 +276,9 @@ export default function AnalysisPage() {
                 {/* Dropdown */}
                 {showDropdown && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
-                    {filteredAssessments.length > 0 ? (
+                    {loading ? (
+                      <div className="px-4 py-3 text-gray-500">Loading assessments...</div>
+                    ) : filteredAssessments.length > 0 ? (
                       filteredAssessments.map((assessment) => (
                         <div
                           key={assessment.id}
@@ -237,12 +291,14 @@ export default function AnalysisPage() {
                         >
                           <div className="font-medium text-gray-900">{assessment.name}</div>
                           <div className="text-sm text-gray-600">
-                            {assessment.facility} • {assessment.period} • {assessment.date}
+                            {assessment.org_unit_name} • {new Date(assessment.created_at).toLocaleDateString()}
                           </div>
                         </div>
                       ))
                     ) : (
-                      <div className="px-4 py-3 text-gray-500">No assessments found</div>
+                      <div className="px-4 py-3 text-gray-500">
+                        {error ? 'Error loading assessments' : 'No assessments found'}
+                      </div>
                     )}
                   </div>
                 )}
@@ -255,7 +311,10 @@ export default function AnalysisPage() {
                     <div>
                       <div className="font-medium text-blue-900">Selected Assessment</div>
                       <div className="text-sm text-blue-700">
-                        {selectedAssessment.facility} • {selectedAssessment.period}
+                        {selectedAssessment.org_unit_name} • {new Date(selectedAssessment.created_at).toLocaleDateString()}
+                      </div>
+                      <div className="text-xs text-blue-600 mt-1">
+                        {selectedAssessment.total_indicators} indicators • {selectedAssessment.total_objectives} objectives
                       </div>
                     </div>
                     <Button
@@ -313,7 +372,7 @@ export default function AnalysisPage() {
               <div className="max-w-4xl">
                 <PerformanceChart
                   title="Overall Sector Score"
-                  score={assessmentData.overallScore}
+                  score={assessmentData.overall_score}
                 />
               </div>
             </div>
@@ -326,7 +385,7 @@ export default function AnalysisPage() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="text-center p-4 bg-gray-50 rounded-lg">
-                    <div className="text-2xl font-bold text-gray-900">{assessmentData.overallScore.toFixed(1)}</div>
+                    <div className="text-2xl font-bold text-gray-900">{assessmentData.overall_score.toFixed(1)}</div>
                     <div className="text-sm text-gray-600">Overall Score</div>
                   </div>
                   <div className="text-center p-4 bg-gray-50 rounded-lg">
