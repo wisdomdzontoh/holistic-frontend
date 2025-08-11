@@ -23,7 +23,7 @@ export interface ObjectiveData {
     name: string;
     code: string;
     color: string;
-    score?: number;
+    score: number;
     score_color?: string;
     score_label?: string;
   };
@@ -500,6 +500,97 @@ class AssessmentService {
     if (Array.isArray(response)) return response;
     if (response?.results && Array.isArray(response.results)) return response.results;
     return [];
+  }
+
+  async updateMilestoneScore(milestoneId: number, score: number, orgUnitId: string, assessmentPeriodId: number, orgUnitName?: string): Promise<any> {
+    return this.makeRequest(`/configurations/milestones/${milestoneId}/update_score/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        score,
+        org_unit_id: orgUnitId,
+        assessment_period_id: assessmentPeriodId,
+        org_unit_name: orgUnitName || ''
+      }),
+    });
+  }
+
+  async updateManualIndicatorData(params: {
+    indicator_id: number;
+    org_unit_id: string;
+    assessment_period_id: number;
+    data_updates: {
+      current_value?: number | null;
+      previous_value?: number | null;
+      target_value?: number | null;
+      percent_change?: number | null;
+      target_gap?: number | null;
+      score?: number | null;
+    };
+  }): Promise<any> {
+    return this.makeRequest('/assessments/manual-data/update-indicator/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+  }
+
+  async bulkUpdateManualData(params: {
+    updates: Array<{
+      indicator_id: number;
+      org_unit_id: string;
+      assessment_period_id: number;
+      data_updates: {
+        current_value?: number | null;
+        previous_value?: number | null;
+        target_value?: number | null;
+        percent_change?: number | null;
+        target_gap?: number | null;
+        score?: number | null;
+      };
+    }>;
+  }): Promise<any> {
+    return this.makeRequest('/assessments/manual-data/bulk-update/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+  }
+
+  async overrideIndicatorScore(params: {
+    indicator_id: number;
+    org_unit_id: string;
+    assessment_period_id: number;
+    score: number;
+    reason?: string;
+  }): Promise<any> {
+    return this.makeRequest('/assessments/manual-data/override-score/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+  }
+
+  async calculateScoresForIndicators(params: {
+    indicator_ids: number[];
+    org_unit_id: string;
+    assessment_period_id: number;
+  }): Promise<any> {
+    return this.makeRequest('/assessments/manual-data/calculate-scores/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
   }
 
   async getDashboardSummary(assessmentPeriodId?: number): Promise<any> {

@@ -226,8 +226,8 @@ export default function AssessmentPage() {
     }
   };
 
-  const handleCellEdit = (indicatorId: number, period: string, value: string) => {
-    // Update the multiPeriodData with the new cell value
+  const handleCellEdit = async (indicatorId: number, period: string, value: string) => {
+    // Update the multiPeriodData with the new cell value immediately for responsiveness
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
       
@@ -237,30 +237,133 @@ export default function AssessmentPage() {
           ...objective,
           indicators: objective.indicators.map(indicator => {
             if (indicator.id === indicatorId) {
-              return {
-                ...indicator,
-                data_values: {
-                  ...indicator.data_values,
-                  [period]: {
-                    value: parseFloat(value) || 0,
-                    calculated_value: parseFloat(value) || 0,
-                    created_at: new Date().toISOString()
+              // Handle different types of updates
+              if (period === 'percent_change' || period === 'target_gap') {
+                // Manual entry of derived metrics - update the score object
+                const numValue = parseFloat(value) || 0;
+                return {
+                  ...indicator,
+                  score: {
+                    ...(indicator.score || {}),
+                    [period]: numValue,
+                    is_manual_override: true
                   }
-                }
-              };
+                };
+              } else {
+                // Regular period data update
+                return {
+                  ...indicator,
+                  data_values: {
+                    ...indicator.data_values,
+                    [period]: {
+                      value: parseFloat(value) || 0,
+                      calculated_value: parseFloat(value) || 0,
+                      created_at: new Date().toISOString()
+                    }
+                  }
+                };
+              }
             }
             return indicator;
           })
         }))
       })) as AssessmentData[];
       
-      const updatedData = withRollups(updatedDataRaw);
+      // Recompute scores after updating data
+      const updatedDataWithScores = computeAllIndicatorScores(updatedDataRaw, prev.selectedPeriods);
+      const updatedData = withRollups(updatedDataWithScores);
       return { ...prev, multiPeriodData: updatedData };
     });
+
+    // Only send update to backend if assessment is saved (has an ID)
+    if (state.currentAssessmentId) {
+      try {
+        const orgUnitId = state.multiPeriodData?.[0]?.org_unit_id;
+        const assessmentPeriodId = state.multiPeriodData?.[0]?.assessment_period?.id;
+        
+        if (!orgUnitId || !assessmentPeriodId) {
+          console.warn('Missing org unit or assessment period info for backend update');
+          return;
+        }
+
+        // Prepare data updates for backend
+        const dataUpdates: any = {};
+        
+        if (period === 'percent_change') {
+          dataUpdates.percent_change = parseFloat(value) || 0;
+        } else if (period === 'target_gap') {
+          dataUpdates.target_gap = parseFloat(value) || 0;
+        } else {
+          // For period data updates, we need to determine if this is current_value or previous_value
+          const periods = state.selectedPeriods;
+          if (periods.length > 0) {
+            const lastPeriod = periods[periods.length - 1];
+            const secondLastPeriod = periods.length > 1 ? periods[periods.length - 2] : null;
+            
+            if (period === lastPeriod.name || period === lastPeriod.code) {
+              dataUpdates.current_value = parseFloat(value) || 0;
+            } else if (secondLastPeriod && (period === secondLastPeriod.name || period === secondLastPeriod.code)) {
+              dataUpdates.previous_value = parseFloat(value) || 0;
+            }
+          }
+        }
+
+        // Call backend API
+        if (Object.keys(dataUpdates).length > 0) {
+          const response = await assessmentService.updateManualIndicatorData({
+            indicator_id: indicatorId,
+            org_unit_id: orgUnitId,
+            assessment_period_id: assessmentPeriodId,
+            data_updates: dataUpdates
+          });
+
+          // Update local state with backend response if successful
+          if (response.success) {
+            setState(prev => {
+              if (!prev.multiPeriodData) return prev;
+              
+              const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+                ...periodData,
+                objectives: periodData.objectives.map(objective => ({
+                  ...objective,
+                  indicators: objective.indicators.map(indicator => {
+                    if (indicator.id === indicatorId) {
+                      return {
+                        ...indicator,
+                        score: {
+                          ...(indicator.score || {}),
+                          score: response.indicator_score.score,
+                          score_color: response.indicator_score.score_color,
+                          score_label: response.indicator_score.score_label,
+                          percent_change: response.indicator_score.percent_change,
+                          target_gap: response.indicator_score.target_gap,
+                          is_manual_override: response.indicator_score.is_manual_override
+                        }
+                      };
+                    }
+                    return indicator;
+                  })
+                }))
+              })) as AssessmentData[];
+              
+              const updatedData = withRollups(updatedDataRaw);
+              return { ...prev, multiPeriodData: updatedData };
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error updating backend data:', error);
+        toast.error('Failed to save changes to backend');
+      }
+    } else {
+      // If assessment is not saved, show a helpful message
+      console.log('Assessment not saved yet. Changes are stored locally only.');
+      toast.info('Changes saved locally. Save the assessment to persist changes to the backend.');
+    }
   };
 
-  const handleScoreChange = (indicatorId: number, score: string) => {
-    // Update the multiPeriodData with the new score
+  const handleScoreChange = async (indicatorId: number, score: string) => {
+    // Update the multiPeriodData with the new score immediately for responsiveness
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
       
@@ -290,41 +393,137 @@ export default function AssessmentPage() {
         }))
       })) as AssessmentData[];
       
-      const updatedData = withRollups(updatedDataRaw);
+      // Recompute scores to ensure consistency
+      const updatedDataWithScores = computeAllIndicatorScores(updatedDataRaw, prev.selectedPeriods);
+      const updatedData = withRollups(updatedDataWithScores);
       return { ...prev, multiPeriodData: updatedData };
     });
+
+    // Only send update to backend if assessment is saved (has an ID)
+    if (state.currentAssessmentId) {
+      try {
+        const orgUnitId = state.multiPeriodData?.[0]?.org_unit_id;
+        const assessmentPeriodId = state.multiPeriodData?.[0]?.assessment_period?.id;
+        
+        if (!orgUnitId || !assessmentPeriodId) {
+          console.warn('Missing org unit or assessment period info for backend update');
+          return;
+        }
+
+        const response = await assessmentService.updateManualIndicatorData({
+          indicator_id: indicatorId,
+          org_unit_id: orgUnitId,
+          assessment_period_id: assessmentPeriodId,
+          data_updates: {
+            score: parseInt(score)
+          }
+        });
+
+        // Update local state with backend response if successful
+        if (response.success) {
+          setState(prev => {
+            if (!prev.multiPeriodData) return prev;
+            
+            const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+              ...periodData,
+              objectives: periodData.objectives.map(objective => ({
+                ...objective,
+                indicators: objective.indicators.map(indicator => {
+                  if (indicator.id === indicatorId) {
+                    return {
+                      ...indicator,
+                      score: {
+                        ...(indicator.score || {}),
+                        score: response.indicator_score.score,
+                        score_color: response.indicator_score.score_color,
+                        score_label: response.indicator_score.score_label,
+                        is_manual_override: response.indicator_score.is_manual_override
+                      }
+                    };
+                  }
+                  return indicator;
+                })
+              }))
+            })) as AssessmentData[];
+            
+            const updatedData = withRollups(updatedDataRaw);
+            return { ...prev, multiPeriodData: updatedData };
+          });
+        }
+      } catch (error) {
+        console.error('Error updating backend score:', error);
+        toast.error('Failed to save score to backend');
+      }
+    } else {
+      // If assessment is not saved, show a helpful message
+      console.log('Assessment not saved yet. Score changes are stored locally only.');
+      toast.info('Score changes saved locally. Save the assessment to persist changes to the backend.');
+    }
   };
 
-  const handleMilestoneScoreChange = (objectiveId: number, score: string) => {
-    // Update the multiPeriodData with the new milestone score
-    setState(prev => {
-      if (!prev.multiPeriodData) return prev;
-      
-      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
-        ...periodData,
-        objectives: periodData.objectives.map(objective => {
-          if (objective.id === objectiveId && objective.milestone) {
-            const numScore = parseFloat(score);
-            const scoreColor = getScoreColor(numScore);
-            const scoreLabel = getScoreLabel(numScore);
-            
-            return {
-              ...objective,
-              milestone: {
-                ...objective.milestone,
-                score: numScore,
-                score_color: scoreColor,
-                score_label: scoreLabel
-              }
-            };
-          }
-          return objective;
-        })
-      })) as AssessmentData[];
+  const handleMilestoneScoreChange = async (objectiveId: number, score: string) => {
+    // Find the objective and its milestone
+    const objective = state.multiPeriodData?.[0]?.objectives.find(obj => obj.id === objectiveId);
+    if (!objective?.milestone) {
+      toast.error('Milestone not found for this objective');
+      return;
+    }
 
-      const updatedData = withRollups(updatedDataRaw);
-      return { ...prev, multiPeriodData: updatedData };
-    });
+    // Get org unit and assessment period info
+    const orgUnitId = state.multiPeriodData?.[0]?.org_unit_id;
+    const assessmentPeriodId = state.multiPeriodData?.[0]?.assessment_period?.id;
+    const orgUnitName = state.multiPeriodData?.[0]?.org_unit_name;
+
+    if (!orgUnitId || !assessmentPeriodId) {
+      toast.error('Missing organization unit or assessment period information');
+      return;
+    }
+
+    try {
+      // Update the milestone score in the backend
+      await assessmentService.updateMilestoneScore(
+        objective.milestone.id, 
+        parseInt(score),
+        orgUnitId,
+        assessmentPeriodId,
+        orgUnitName
+      );
+      
+      // Update the local state
+      setState(prev => {
+        if (!prev.multiPeriodData) return prev;
+        
+        const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+          ...periodData,
+          objectives: periodData.objectives.map(obj => {
+            if (obj.id === objectiveId && obj.milestone) {
+              const numScore = parseFloat(score);
+              const scoreColor = getScoreColor(numScore);
+              const scoreLabel = getScoreLabel(numScore);
+              
+              return {
+                ...obj,
+                milestone: {
+                  ...obj.milestone,
+                  score: numScore,
+                  score_color: scoreColor,
+                  score_label: scoreLabel
+                }
+              };
+            }
+            return obj;
+          })
+        })) as AssessmentData[];
+
+        const updatedData = withRollups(updatedDataRaw);
+        return { ...prev, multiPeriodData: updatedData };
+      });
+
+      toast.success(`Milestone score updated to ${score}`);
+    } catch (error) {
+      console.error('Error updating milestone score:', error);
+      toast.error('Failed to update milestone score');
+    }
   };
 
   const getScoreLabel = (score: number) => {
@@ -399,31 +598,41 @@ export default function AssessmentPage() {
   };
 
   const computeIndicatorScore = (indicator: any, periods: Period[]) => {
-    if (indicator?.score?.is_manual_override) return indicator; // respect manual override
     const last = periods[periods.length - 1]?.name;
     if (!last) return indicator;
     const currVal = indicator?.data_values?.[last]?.value;
     const target = indicator?.target_value;
     if (currVal === undefined || currVal === null) return indicator;
 
+    // Check if we have manual overrides for percent_change or target_gap
+    const hasManualOverride = indicator?.score?.is_manual_override;
+    const manualPercentChange = indicator?.score?.percent_change;
+    const manualTargetGap = indicator?.score?.target_gap;
+
     // Compute change % and gap % for table/export
     const prevName = periods.length > 1 ? periods[periods.length - 2]?.name : undefined;
     const prevVal = prevName ? indicator?.data_values?.[prevName]?.value : undefined;
-    const changePct = (function(){
-      if (prevVal === undefined || prevVal === null || Number(prevVal) === 0) return undefined as unknown as number;
-      const change = ((Number(currVal) - Number(prevVal)) / Math.abs(Number(prevVal))) * 100;
-      return isFinite(change) ? Number(change.toFixed(1)) : undefined as unknown as number;
-    })();
-    const gapPct = (function(){
-      if (target === null || target === undefined || Number(target) === 0) return undefined as unknown as number;
-      const targetType = (indicator?.target_type || 'increase').toLowerCase();
-      const ratio = Number(currVal) / Number(target);
-      const gap = targetType === 'increase' ? (ratio - 1) * 100 : (1 - ratio) * 100;
-      return isFinite(gap) ? Number(gap.toFixed(1)) : undefined as unknown as number;
-    })();
+    
+    // Use manual values if available, otherwise compute
+    const changePct = hasManualOverride && manualPercentChange !== undefined 
+      ? manualPercentChange 
+      : (function(){
+          if (prevVal === undefined || prevVal === null || Number(prevVal) === 0) return undefined as unknown as number;
+          const change = ((Number(currVal) - Number(prevVal)) / Math.abs(Number(prevVal))) * 100;
+          return isFinite(change) ? Number(change.toFixed(1)) : undefined as unknown as number;
+        })();
+    
+    const gapPct = hasManualOverride && manualTargetGap !== undefined 
+      ? manualTargetGap 
+      : (function(){
+          if (target === null || target === undefined || Number(target) === 0) return undefined as unknown as number;
+          const targetType = (indicator?.target_type || 'increase').toLowerCase();
+          const ratio = Number(currVal) / Number(target);
+          const gap = targetType === 'increase' ? (ratio - 1) * 100 : (1 - ratio) * 100;
+          return isFinite(gap) ? Number(gap.toFixed(1)) : undefined as unknown as number;
+        })();
 
     const findRuleScore = () => {
-      if (!scoringRules || !Array.isArray(scoringRules) || scoringRules.length === 0) return undefined as unknown as number;
       const prevName = periods.length > 1 ? periods[periods.length - 2]?.name : undefined;
       const prevVal = prevName ? indicator?.data_values?.[prevName]?.value : undefined;
       const targetType = (indicator?.target_type || 'increase').toLowerCase();
@@ -439,8 +648,32 @@ export default function AssessmentPage() {
       };
 
       const absoluteValue = Number(currVal);
-      const gapPct = calcGap();
-      const changePct = calcChange();
+      // Use manual values if available, otherwise compute
+      const gapPct = hasManualOverride && manualTargetGap !== undefined ? manualTargetGap : calcGap();
+      const changePct = hasManualOverride && manualPercentChange !== undefined ? manualPercentChange : calcChange();
+
+      // If no scoring rules are available, use default logic
+      if (!scoringRules || !Array.isArray(scoringRules) || scoringRules.length === 0) {
+        // Default scoring logic based on gap and change
+        if (gapPct !== undefined && !isNaN(gapPct)) {
+          const absGap = Math.abs(gapPct);
+          if (absGap <= 10) return 2;  // Very close to target
+          if (absGap <= 25) return 1;  // Close to target
+          if (absGap <= 50) return 0;  // Moderate gap
+          if (absGap <= 75) return -1; // Large gap
+          return -2; // Very large gap
+        }
+        
+        if (changePct !== undefined && !isNaN(changePct)) {
+          if (changePct > 10) return 2;   // Strong improvement
+          if (changePct > 5) return 1;    // Moderate improvement
+          if (changePct > -5) return 0;   // Stable
+          if (changePct > -10) return -1; // Moderate decline
+          return -2; // Strong decline
+        }
+        
+        return undefined as unknown as number;
+      }
 
       const pick = (perfType: string, metric: number | undefined) => {
         if (metric === undefined || isNaN(metric as number)) return undefined as unknown as number;
@@ -942,9 +1175,17 @@ export default function AssessmentPage() {
   };
 
   const exportToPDF = () => {
-    if (!state.multiPeriodData || state.multiPeriodData.length === 0) return;
-    const w = window.open('', '_blank');
-    if (!w) return;
+    if (!state.multiPeriodData || state.multiPeriodData.length === 0) {
+      toast.error('No assessment data available for PDF export');
+      return;
+    }
+    
+    try {
+      const w = window.open('', '_blank');
+      if (!w) {
+        toast.error('Popup blocked. Please allow popups for this site to generate PDF.');
+        return;
+      }
     const org = state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || 'Org Unit';
     const periods = state.selectedPeriods.map(p=>p.displayName).join(', ');
     const style = `
@@ -1002,16 +1243,51 @@ export default function AssessmentPage() {
           const gap = targetType==='increase' ? (ratio-1)*100 : (1-ratio)*100;
           return isFinite(gap) ? gap.toFixed(1)+'%' : '';
         })();
-        const s = Number(ind?.score?.score);
-        const cls = isNaN(s) ? '' : (s>=1?'g':(s>=0?'y':(s>=-1?'o':'r')));
-        html += `<td>${chCalc}</td><td>${gapCalc}</td><td>${ind.target_value ?? ''}</td><td class="score ${cls}">${ind?.score?.score ?? ''}</td>`;
+        // Use the score from the backend calculation instead of calculating on the fly
+        const scoreData = ind?.score;
+        const scoreValue = scoreData?.score;
+        const scoreLabel = scoreData?.score_label;
+        
+        // Determine color class based on score value
+        let cls = '';
+        if (scoreValue !== null && scoreValue !== undefined) {
+          const s = Number(scoreValue);
+          if (!isNaN(s)) {
+            if (s >= 1) cls = 'g';
+            else if (s >= 0) cls = 'y';
+            else if (s > -1) cls = 'o';
+            else cls = 'r';
+          }
+        }
+        
+        // Use the calculated values from backend if available, otherwise fall back to client calculation
+        const changeValue = scoreData?.percent_change !== undefined ? 
+          `${scoreData.percent_change.toFixed(1)}%` : chCalc;
+        const gapValue = scoreData?.target_gap !== undefined ? 
+          `${scoreData.target_gap.toFixed(1)}%` : gapCalc;
+        
+        html += `<td>${changeValue}</td><td>${gapValue}</td><td>${ind.target_value ?? ''}</td><td class="score ${cls}">${scoreValue ?? ''}</td>`;
         html += '</tr>';
       });
       if ((obj as any).milestone?.name){
         const ms = (obj as any).milestone;
-        html += `<tr class="ms"><td>MS</td><td>Milestone for ${obj.name}</td>`;
+        const milestoneScore = ms.score;
+        
+        // Determine color class for milestone score
+        let msCls = '';
+        if (milestoneScore !== null && milestoneScore !== undefined) {
+          const s = Number(milestoneScore);
+          if (!isNaN(s)) {
+            if (s >= 1) msCls = 'g';
+            else if (s >= 0) msCls = 'y';
+            else if (s > -1) msCls = 'o';
+            else msCls = 'r';
+          }
+        }
+        
+        html += `<tr class="ms"><td>MS</td><td>${ms.name || `Milestone for ${obj.name}`}</td>`;
         html += state.selectedPeriods.map(()=>'<td></td>').join('');
-        html += `<td></td><td></td><td></td><td>${ms.score ?? ''}</td></tr>`;
+        html += `<td></td><td></td><td></td><td class="score ${msCls}">${milestoneScore ?? ''}</td></tr>`;
       }
     });
     html += '</tbody></table>';
@@ -1021,10 +1297,14 @@ export default function AssessmentPage() {
       + '<div><span class="chip o">-1..&lt;0</span> Underperforming</div>'
       + '<div><span class="chip r">&lt; -1</span> Severely Underperforming</div>'
       + '</div>';
-    w.document.write('<!doctype html><html><head><meta charset="utf-8">'+style+'</head><body>'+html+'</body></html>');
-    w.document.close();
-    w.focus();
-    w.print();
+      w.document.write('<!doctype html><html><head><meta charset="utf-8">'+style+'</head><body>'+html+'</body></html>');
+      w.document.close();
+      w.focus();
+      w.print();
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF. Please try again.');
+    }
   };
 
   return (

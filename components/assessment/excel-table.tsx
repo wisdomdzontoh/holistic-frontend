@@ -22,9 +22,7 @@ interface CellData {
   isDHIS2Data: boolean;
 }
 
-interface MilestoneScoreData {
-  [objectiveId: number]: string;
-}
+
 
 export default function ExcelTable({ 
   multiPeriodData, 
@@ -34,20 +32,14 @@ export default function ExcelTable({
   onMilestoneScoreChange
 }: ExcelTableProps) {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
-  const [milestoneScores, setMilestoneScores] = useState<MilestoneScoreData>({});
 
   // Initialize cell data when multiPeriodData changes
   useEffect(() => {
     if (multiPeriodData && multiPeriodData.length > 0) {
       const newCellData: Record<string, CellData> = {};
-      const newMilestoneScores: MilestoneScoreData = {};
       
       multiPeriodData.forEach((periodData) => {
         periodData.objectives.forEach((objective) => {
-          // Initialize milestone score if objective has milestone
-          if (objective.milestone) {
-            newMilestoneScores[objective.id] = '-2.00';
-          }
           
           objective.indicators.forEach((indicator) => {
             // Performance trend columns (period data)
@@ -108,7 +100,6 @@ export default function ExcelTable({
       });
       
       setCellData(newCellData);
-      setMilestoneScores(newMilestoneScores);
     }
   }, [multiPeriodData, selectedPeriods]);
 
@@ -129,16 +120,12 @@ export default function ExcelTable({
   };
 
   const handleMilestoneScoreChange = (objectiveId: number, value: string) => {
-    const formattedValue = `${value}.00`;
-    setMilestoneScores(prev => ({
-      ...prev,
-      [objectiveId]: formattedValue
-    }));
-    
     if (onMilestoneScoreChange) {
-      onMilestoneScoreChange(objectiveId, formattedValue);
+      onMilestoneScoreChange(objectiveId, value);
     }
   };
+
+
 
   const getScoreColor = (score: string) => {
     const numScore = parseFloat(score);
@@ -235,13 +222,15 @@ export default function ExcelTable({
               </tr>
               
               {/* Indicators */}
-              {objective.indicators.map((indicator, indIndex) => (
+              {objective.indicators
+                .sort((a, b) => a.display_order - b.display_order)
+                .map((indicator, indIndex) => (
                 <tr key={indicator.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 px-2 py-2 text-center font-medium">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="flex items-center justify-center gap-1 cursor-help">
-                          {indicator.indicator_number || `${objIndex + 1}.${indIndex + 1}`}
+                          {indicator.indicator_number || `${objIndex + 1}.${indicator.display_order || indIndex + 1}`}
                           {indicator.dhis2_uid ? (
                             <Database className="h-3 w-3 text-blue-600" />
                           ) : (
@@ -302,19 +291,19 @@ export default function ExcelTable({
                     );
                   })}
                   
-                  {/* Change column */}
-                  <td className={`border border-gray-300 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
-                    <div className="text-xs text-center">
-                      {cellData[`${indicator.id}_change`]?.value || ''}
-                    </div>
-                  </td>
-                  
-                  {/* P-T Gap Analysis column */}
-                  <td className={`border border-gray-300 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
-                    <div className="text-xs text-center">
-                      {cellData[`${indicator.id}_gap`]?.value || ''}
-                    </div>
-                  </td>
+                              {/* Change column */}
+            <td className={`border border-gray-300 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
+              <div className="text-xs text-center">
+                {cellData[`${indicator.id}_change`]?.value || ''}
+              </div>
+            </td>
+            
+            {/* P-T Gap Analysis column */}
+            <td className={`border border-gray-300 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
+              <div className="text-xs text-center">
+                {cellData[`${indicator.id}_gap`]?.value || ''}
+              </div>
+            </td>
                   
                   {/* Target column */}
                   <td className="border border-gray-300 px-1 py-1">
@@ -394,26 +383,32 @@ export default function ExcelTable({
                   </div>
                 </td>
                 
-                {/* Milestone score input - properly aligned */}
+                {/* Milestone score dropdown - properly aligned */}
                 <td className="border border-gray-300 px-1 py-1">
-                  <Select
-                    value={milestoneScores[objective.id]?.replace('.00', '') || '-2'}
-                    onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
-                  >
-                    <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500" style={{ 
-                      backgroundColor: getScoreColor(milestoneScores[objective.id] || '-2.00'),
-                      color: 'white'
-                    }}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="-2">-2</SelectItem>
-                      <SelectItem value="-1">-1</SelectItem>
-                      <SelectItem value="0">0</SelectItem>
-                      <SelectItem value="1">1</SelectItem>
-                      <SelectItem value="2">2</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {objective.milestone ? (
+                    <Select
+                      value={objective.milestone.score?.toString() || '-2'}
+                      onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
+                    >
+                      <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500" style={{ 
+                        backgroundColor: getScoreColor(`${objective.milestone.score || -2}.00`),
+                        color: 'white'
+                      }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="-2">-2</SelectItem>
+                        <SelectItem value="-1">-1</SelectItem>
+                        <SelectItem value="0">0</SelectItem>
+                        <SelectItem value="1">1</SelectItem>
+                        <SelectItem value="2">2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="text-xs text-center text-gray-400">
+                      N/A
+                    </div>
+                  )}
                 </td>
                 
                 {/* Remarks column for milestone - properly aligned */}

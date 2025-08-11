@@ -138,34 +138,34 @@ export default function PeriodSelectionModal({
               <div className="flex space-x-4">
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Period type</label>
-                  <Select value={selectedType} onValueChange={handleTypeChange}>
+              <Select value={selectedType} onValueChange={handleTypeChange}>
                     <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
                       {periodTypeOptions.map(option => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
                         </SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                </SelectContent>
+              </Select>
+            </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-                  <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
+              <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
                     <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {years.map(year => (
-                        <SelectItem key={year} value={year.toString()}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map(year => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
               </div>
             </div>
 
@@ -249,7 +249,7 @@ export default function PeriodSelectionModal({
             <div className="flex-1 overflow-hidden min-h-0">
               <ScrollArea className="h-full">
                 <div className="p-2 space-y-2">
-                  {localSelectedPeriods.map(period => (
+              {localSelectedPeriods.map(period => (
                     <div
                       key={period.id}
                       className="flex items-center space-x-2 p-2 bg-green-50 rounded border border-green-200"
@@ -258,12 +258,12 @@ export default function PeriodSelectionModal({
                         <div className="w-2 h-2 bg-white rounded-full" />
                       </div>
                       <span className="text-sm text-green-700 flex-1">{period.displayName}</span>
-                      <button
+                  <button
                         onClick={() => handleSelectedPeriodClick(period)}
                         className="text-green-600 hover:text-green-800"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                     </div>
                   ))}
                   {localSelectedPeriods.length === 0 && (
@@ -275,18 +275,18 @@ export default function PeriodSelectionModal({
                 </div>
               </ScrollArea>
             </div>
+            </div>
           </div>
-        </div>
 
         {/* Bottom Action Buttons - Fixed at bottom */}
         <div className="flex-shrink-0 flex justify-end space-x-2 pt-4 border-t bg-gray-50 px-4 py-3 -mx-6 -mb-6 sticky bottom-0">
-          <Button 
-            variant="outline" 
+                <Button
+                  variant="outline"
             onClick={onClose}
             className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
           >
             Hide
-          </Button>
+                </Button>
           <Button 
             onClick={() => {
               onPeriodsSelected(localSelectedPeriods);
@@ -296,7 +296,7 @@ export default function PeriodSelectionModal({
             style={{ backgroundColor: '#265380' }}
           >
             Update
-          </Button>
+            </Button>
         </div>
       </DialogContent>
     </Dialog>

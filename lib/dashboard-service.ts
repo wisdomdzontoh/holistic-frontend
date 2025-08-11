@@ -1,19 +1,17 @@
 export interface DashboardSummary {
-  totalFacilities: number;
-  activeAssessments: number;
-  averageScore: number;
-  completionRate: number;
-  performanceCategories: {
-    excellent: number;
-    good: number;
-    needsImprovement: number;
-    poor: number;
-  };
-  recentActivity: Array<{
-    facility: string;
-    action: string;
-    time: string;
-    status: 'success' | 'pending' | 'error' | 'info';
+  assessment_period: string;
+  total_org_units: number;
+  org_units_with_scores: number;
+  average_score: number;
+  max_score: number;
+  min_score: number;
+  performance_distribution: Record<string, number>;
+  sector_scores: Array<{
+    org_unit_id: number;
+    org_unit_name: string;
+    score: number;
+    color: string;
+    label: string;
   }>;
 }
 
@@ -71,25 +69,7 @@ class DashboardService {
       return data;
     } catch (error) {
       console.error('Error fetching dashboard summary:', error);
-      // Return mock data for now
-      return {
-        totalFacilities: 156,
-        activeAssessments: 89,
-        averageScore: 4.2,
-        completionRate: 78,
-        performanceCategories: {
-          excellent: 45,
-          good: 32,
-          needsImprovement: 23,
-          poor: 0
-        },
-        recentActivity: [
-          { facility: 'Korle Bu Teaching Hospital', action: 'Assessment completed', time: '2 hours ago', status: 'success' },
-          { facility: 'Ridge Hospital', action: 'Assessment started', time: '4 hours ago', status: 'pending' },
-          { facility: '37 Military Hospital', action: 'Data updated', time: '6 hours ago', status: 'info' },
-          { facility: 'La General Hospital', action: 'Assessment failed', time: '8 hours ago', status: 'error' }
-        ]
-      };
+      throw error;
     }
   }
 
