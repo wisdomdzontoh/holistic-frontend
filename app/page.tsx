@@ -22,9 +22,9 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-200">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 mx-auto" style={{ borderColor: '#154360' }}></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -32,7 +32,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gray-200 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900">
@@ -51,7 +51,10 @@ export default function HomePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">
-            <Button onClick={() => router.push('/login')}>
+            <Button 
+              onClick={() => router.push('/login')}
+              style={{ backgroundColor: '#154360' }}
+            >
               Go to Login
             </Button>
           </CardContent>

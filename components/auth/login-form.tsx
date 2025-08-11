@@ -65,9 +65,9 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-gray-200">
       {/* Left Section - Login Form */}
-      <div className="flex-1 flex items-center justify-center bg-white px-8 py-12">
+      <div className="flex-1 flex items-center justify-center bg-gray-200 px-8 py-12">
         <div className="w-full max-w-md space-y-8">
           {/* Header */}
           <div className="flex items-center space-x-4">
@@ -94,8 +94,8 @@ export function LoginForm() {
           </div>
 
           {/* Login Form */}
-          <Card className="border-0 shadow-none">
-            <CardContent className="p-0">
+          <Card className="border-0 shadow-lg bg-white">
+            <CardContent className="p-6">
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                   <FormField
@@ -110,7 +110,7 @@ export function LoginForm() {
                             type="text"
                             placeholder="Enter your DHIS2 username"
                             disabled={isLoading}
-                            className="h-12 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            className="h-12 border-gray-300 focus:border-blue-600 focus:ring-blue-600"
                           />
                         </FormControl>
                         <FormMessage />
@@ -130,7 +130,7 @@ export function LoginForm() {
                             type="password"
                             placeholder="Enter your password"
                             disabled={isLoading}
-                            className="h-12 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            className="h-12 border-gray-300 focus:border-blue-600 focus:ring-blue-600"
                           />
                         </FormControl>
                         <FormMessage />
@@ -150,7 +150,7 @@ export function LoginForm() {
                             type="url"
                             placeholder="https://your-dhis2-instance.org/dhims"
                             disabled={isLoading}
-                            className="h-12 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            className="h-12 border-gray-300 focus:border-blue-600 focus:ring-blue-600"
                           />
                         </FormControl>
                         <FormMessage />
@@ -163,7 +163,8 @@ export function LoginForm() {
 
                   <Button
                     type="submit"
-                    className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-medium"
+                    className="w-full h-12 text-white font-medium"
+                    style={{ backgroundColor: '#154360' }}
                     disabled={isLoading}
                   >
                     {isLoading ? 'Signing in...' : 'Login'}
@@ -191,7 +192,7 @@ export function LoginForm() {
       </div>
 
       {/* Right Section - Dashboard Preview */}
-      <div className="flex-1 bg-gradient-to-br from-blue-900 to-blue-800 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden" style={{ backgroundColor: '#154360' }}>
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-32 h-32 bg-blue-400 rounded-full"></div>
@@ -274,7 +275,7 @@ export function LoginForm() {
 
               {/* Action Button */}
               <div className="pt-4 border-t border-gray-200">
-                <button className="w-full py-2 px-4 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                <button className="w-full py-2 px-4 text-white text-sm font-medium rounded-md" style={{ backgroundColor: '#2E86AB' }}>
                   View Full Dashboard
                 </button>
               </div>
