@@ -1056,8 +1056,7 @@ export default function AssessmentPage() {
         return assessmentService.triggerDataSync({
           sync_type: 'period',
           org_unit_ids: state.selectedOrgUnits,
-          period_start: period.startDate,
-          period_end: period.endDate,
+          periods: [period], // Pass the actual period object
           calculate_scores: true,
         });
       });

@@ -355,19 +355,37 @@ class AssessmentService {
     org_unit_ids?: string[];
     indicator_uids?: string[];
     calculate_scores?: boolean;
+    periods?: Period[]; // Add periods parameter for proper period codes
   }): Promise<any> {
     // Use the new real-time architecture instead of the old sync service
+    let periods = [];
+    
+    if (syncParams.periods && syncParams.periods.length > 0) {
+      // Use the actual period codes from the periods array
+      periods = syncParams.periods.map(period => ({
+        name: period.name,
+        period_type: period.periodType,
+        start_date: period.startDate,
+        end_date: period.endDate,
+        code: period.code
+      }));
+    } else if (syncParams.period_start && syncParams.period_end) {
+      // Fallback: generate period code from start date (year only)
+      const year = new Date(syncParams.period_start).getFullYear();
+      periods = [{
+        name: `${syncParams.period_start} to ${syncParams.period_end}`,
+        period_type: 'custom',
+        start_date: syncParams.period_start,
+        end_date: syncParams.period_end,
+        code: year.toString()
+      }];
+    }
+    
     return this.makeRequest('/assessments/holistic-assessment/fetch_data/', {
       method: 'POST',
       body: JSON.stringify({
         org_unit_ids: syncParams.org_unit_ids || [],
-        periods: [{
-          name: `${syncParams.period_start} to ${syncParams.period_end}`,
-          period_type: 'custom',
-          start_date: syncParams.period_start,
-          end_date: syncParams.period_end,
-          code: syncParams.period_start
-        }],
+        periods: periods,
         indicator_uids: syncParams.indicator_uids || [],
         include_scores: syncParams.calculate_scores || false
       }),
