@@ -46,11 +46,6 @@ export function OrgUnitSelectionModal({
 }: OrgUnitSelectionModalProps) {
   const [selectedUnits, setSelectedUnits] = useState<string[]>(selectedOrgUnits);
   const [orgUnitTree, setOrgUnitTree] = useState<OrgUnitNode[]>([]);
-  const [filterOptions, setFilterOptions] = useState({
-    userOrgUnit: true,
-    userSubUnits: false,
-    userSubX2Units: false
-  });
 
 
 
@@ -206,12 +201,16 @@ export function OrgUnitSelectionModal({
   const renderOrgUnitNode = (node: OrgUnitNode, depth: number = 0) => {
     const hasChildren = node.children && node.children.length > 0;
     const isLeaf = !hasChildren && !node.hasLoadedChildren;
-    const indentStyle = { marginLeft: `${depth * 20}px` };
+    const indentStyle = { marginLeft: `${depth * 24}px` };
 
     return (
       <div key={node.id} className="org-unit-node">
         <div 
-          className="flex items-center py-1 hover:bg-gray-50 rounded px-1 cursor-pointer"
+          className={`flex items-center py-2 px-3 rounded-md transition-colors ${
+            node.isSelected 
+              ? 'bg-blue-50 border border-blue-200' 
+              : 'hover:bg-gray-50 border border-transparent'
+          }`}
           style={indentStyle}
         >
           {/* Expand/Collapse button */}
@@ -221,7 +220,7 @@ export function OrgUnitSelectionModal({
                 e.stopPropagation();
                 toggleOrgUnitExpansion(node.id);
               }}
-              className="p-1 hover:bg-gray-100 rounded mr-1"
+              className="p-1 hover:bg-gray-100 rounded mr-2 transition-colors"
               disabled={node.isLoading}
             >
               {node.isLoading ? (
@@ -233,31 +232,33 @@ export function OrgUnitSelectionModal({
               )}
             </button>
           )}
-          {isLeaf && <div className="w-6" />}
+          {isLeaf && <div className="w-8" />}
           
           {/* Checkbox */}
           <Checkbox
             checked={node.isSelected || false}
             onCheckedChange={() => toggleOrgUnitSelection(node.id)}
-            className="h-4 w-4 mr-2"
+            className="h-4 w-4 mr-3"
           />
           
           {/* Icon */}
           {isLeaf ? (
-            <Circle className="h-3 w-3 text-gray-400 mr-2" />
+            <Building2 className="h-4 w-4 text-blue-600 mr-3" />
           ) : (
-            <Folder className="h-4 w-4 text-gray-500 mr-2" />
+            <Folder className="h-4 w-4 text-gray-500 mr-3" />
           )}
           
           {/* Name */}
-          <span className="text-sm text-gray-800 flex-1">
+          <span className={`text-sm flex-1 font-medium ${
+            node.isSelected ? 'text-blue-900' : 'text-gray-800'
+          }`}>
             {node.displayName}
           </span>
         </div>
         
         {/* Children */}
         {hasChildren && node.isExpanded && (
-          <div className="children-container">
+          <div className="children-container mt-1">
             {node.children!.map(child => renderOrgUnitNode(child, depth + 1))}
           </div>
         )}
@@ -319,50 +320,8 @@ export function OrgUnitSelectionModal({
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-          {/* Filter Options */}
-          <div className="flex-shrink-0 space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="user-org-unit"
-                checked={filterOptions.userOrgUnit}
-                onCheckedChange={(checked) => 
-                  setFilterOptions(prev => ({ ...prev, userOrgUnit: checked as boolean }))
-                }
-              />
-              <label htmlFor="user-org-unit" className="text-sm text-gray-700">
-                User organisation unit
-              </label>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="user-sub-units"
-                checked={filterOptions.userSubUnits}
-                onCheckedChange={(checked) => 
-                  setFilterOptions(prev => ({ ...prev, userSubUnits: checked as boolean }))
-                }
-              />
-              <label htmlFor="user-sub-units" className="text-sm text-gray-700">
-                User sub-units
-              </label>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="user-sub-x2-units"
-                checked={filterOptions.userSubX2Units}
-                onCheckedChange={(checked) => 
-                  setFilterOptions(prev => ({ ...prev, userSubX2Units: checked as boolean }))
-                }
-              />
-              <label htmlFor="user-sub-x2-units" className="text-sm text-gray-700">
-                User sub-x2-units
-              </label>
-            </div>
-          </div>
-
           {/* Org Unit Tree */}
-          <div className="flex-1 border border-gray-200 rounded-md p-2 overflow-y-auto min-h-0">
+          <div className="flex-1 border border-gray-200 rounded-md p-3 overflow-y-auto min-h-0 bg-white">
             {orgUnitTree.length > 0 ? (
               <div className="space-y-1">
                 {orgUnitTree.map(node => renderOrgUnitNode(node))}
@@ -378,19 +337,21 @@ export function OrgUnitSelectionModal({
           {/* Selected Units Display */}
           {selectedUnits.length > 0 && (
             <div className="flex-shrink-0 border-t pt-4">
-              <h3 className="font-medium mb-2 text-gray-800">Selected Units ({selectedUnits.length})</h3>
-              <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
+              <h3 className="font-medium mb-3 text-gray-800 flex items-center">
+                <Building2 className="h-4 w-4 mr-2 text-blue-600" />
+                Selected Units ({selectedUnits.length})
+              </h3>
+              <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 bg-gray-50 rounded-md">
                 {getSelectedOrgUnitNames().map((name, index) => (
                   <Badge 
                     key={selectedUnits[index]} 
                     variant="secondary" 
-                    style={{ backgroundColor: '#e6f3ff', color: '#154360', borderColor: '#154360' }}
+                    className="bg-blue-100 text-blue-800 border border-blue-300 hover:bg-blue-200 transition-colors"
                   >
-                    {name}
+                    <span className="font-medium">{name}</span>
                     <button
                       onClick={() => toggleOrgUnitSelection(selectedUnits[index])}
-                      className="ml-1 hover:text-blue-800"
-                      style={{ color: '#154360' }}
+                      className="ml-2 hover:text-blue-900 font-bold text-lg leading-none"
                     >
                       ×
                     </button>

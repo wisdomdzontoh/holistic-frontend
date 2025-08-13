@@ -26,6 +26,7 @@ export interface ObjectiveData {
     score: number;
     score_color?: string;
     score_label?: string;
+    notes?: string;
   };
   indicators: IndicatorData[];
   score?: ObjectiveScoreData;
@@ -59,6 +60,7 @@ export interface IndicatorScoreData {
   current_meets_target?: boolean | null;
   previous_meets_target?: boolean | null;
   is_manual_override: boolean;
+  remarks?: string;
 }
 
 export interface ObjectiveScoreData {

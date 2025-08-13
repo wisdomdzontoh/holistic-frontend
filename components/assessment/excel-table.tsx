@@ -14,6 +14,8 @@ interface ExcelTableProps {
   onCellEdit: (indicatorId: number, period: string, value: string) => void;
   onScoreChange: (indicatorId: number, score: string) => void;
   onMilestoneScoreChange?: (objectiveId: number, score: string) => void;
+  onRemarksChange?: (indicatorId: number, remarks: string) => void;
+  onMilestoneRemarksChange?: (objectiveId: number, remarks: string) => void;
 }
 
 interface CellData {
@@ -29,7 +31,9 @@ export default function ExcelTable({
   selectedPeriods, 
   onCellEdit, 
   onScoreChange,
-  onMilestoneScoreChange
+  onMilestoneScoreChange,
+  onRemarksChange,
+  onMilestoneRemarksChange
 }: ExcelTableProps) {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
 
@@ -88,20 +92,42 @@ export default function ExcelTable({
               isDHIS2Data: false
             };
             
-            // Assessed score column
-            const scoreKey = `${indicator.id}_score`;
-            newCellData[scoreKey] = {
-              value: indicator.score?.score?.toString() || '-2.00',
-              isEditable: true,
-              isDHIS2Data: false
-            };
+                         // Assessed score column
+             const scoreKey = `${indicator.id}_score`;
+             newCellData[scoreKey] = {
+               value: indicator.score?.score?.toString() || '-2.00',
+               isEditable: true,
+               isDHIS2Data: false
+             };
+             
+             // Remarks column
+             const remarksKey = `${indicator.id}_remarks`;
+             newCellData[remarksKey] = {
+               value: indicator.score?.remarks || '',
+               isEditable: true,
+               isDHIS2Data: false
+             };
           });
         });
-      });
-      
-      setCellData(newCellData);
-    }
-  }, [multiPeriodData, selectedPeriods]);
+             });
+       
+       // Add milestone remarks
+       multiPeriodData.forEach((periodData) => {
+         periodData.objectives.forEach((objective) => {
+           if (objective.milestone) {
+             const milestoneRemarksKey = `milestone_${objective.id}_remarks`;
+             newCellData[milestoneRemarksKey] = {
+               value: objective.milestone.notes || '',
+               isEditable: true,
+               isDHIS2Data: false
+             };
+           }
+         });
+       });
+       
+       setCellData(newCellData);
+     }
+   }, [multiPeriodData, selectedPeriods]);
 
   const handleCellChange = (cellKey: string, value: string) => {
     setCellData(prev => ({
@@ -114,6 +140,10 @@ export default function ExcelTable({
     
     if (column === 'score') {
       onScoreChange(parseInt(indicatorId), value);
+    } else if (column === 'remarks') {
+      if (onRemarksChange) {
+        onRemarksChange(parseInt(indicatorId), value);
+      }
     } else if (selectedPeriods.some(p => (p.code || p.name) === column)) {
       onCellEdit(parseInt(indicatorId), column, value);
     }
@@ -125,17 +155,24 @@ export default function ExcelTable({
     }
   };
 
+  const handleMilestoneRemarksChange = (objectiveId: number, value: string) => {
+    if (onMilestoneRemarksChange) {
+      onMilestoneRemarksChange(objectiveId, value);
+    }
+  };
+
 
 
   const getScoreColor = (score: string) => {
     const numScore = parseFloat(score);
     if (isNaN(numScore)) return '#6c757d';
     
-    // Flow diagram colors: -2 (Red), -1 (Magenta), 0 (Yellow), 1 (Green), 2 (Green)
-    if (numScore >= 1) return '#28a745'; // Green for 1 and 2
-    if (numScore === 0) return '#ffc107'; // Yellow for 0
-    if (numScore === -1) return '#e91e63'; // Magenta for -1
-    return '#dc3545'; // Red for -2
+    // New color scheme: 2 (Dark Green), 1 (Light Green), 0 (Yellow), -1 (Light Red), -2 (Red)
+    if (numScore >= 2) return '#548235';
+    if (numScore >= 1) return '#A9D08E';
+    if (numScore === 0) return '#FFFF00';
+    if (numScore === -1) return '#FFC7CE';
+    return '#FF0000';
   };
 
   const getRowBackground = (type: string) => {
@@ -318,10 +355,10 @@ export default function ExcelTable({
                       value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
                       onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
                     >
-                      <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500" style={{ 
-                        backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
-                        color: 'white'
-                      }}>
+                                             <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500 font-bold" style={{ 
+                         backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
+                         color: 'black'
+                       }}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -334,20 +371,42 @@ export default function ExcelTable({
                     </Select>
                   </td>
                   
-                  {/* Remarks column */}
-                  <td className="border border-gray-300 px-1 py-1">
-                    <Input
-                      className="h-6 text-xs border-0 p-1"
-                      placeholder="Add remarks"
-                    />
-                  </td>
+                                     {/* Remarks column */}
+                   <td className="border border-gray-300 px-1 py-1">
+                     <Input
+                       className="h-6 text-xs border-0 p-1"
+                       placeholder="Add remarks"
+                       value={cellData[`${indicator.id}_remarks`]?.value || ''}
+                       onChange={(e) => handleCellChange(`${indicator.id}_remarks`, e.target.value)}
+                     />
+                   </td>
                 </tr>
               ))}
               
               {/* Milestone row with score input */}
               <tr className={getRowBackground('milestone')}>
                 <td className="border border-gray-300 px-2 py-2 font-medium">
-                  MS
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-help">
+                        MS
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs p-3">
+                      <div className="space-y-2">
+                        <div className="font-semibold text-sm text-blue-900">Milestone Score (MS)</div>
+                        <div className="text-xs">
+                          <p>Milestone scores are manually assigned based on evidence of implementation progress.</p>
+                          <p className="mt-2 font-medium">Scoring:</p>
+                          <ul className="mt-1 space-y-1">
+                            <li><span className="font-bold text-green-600">+2:</span> Complete realization</li>
+                            <li><span className="font-bold text-yellow-600">0:</span> Started but not achieved</li>
+                            <li><span className="font-bold text-red-600">-2:</span> No evidence/incomplete</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
                 </td>
                 <td className="border border-gray-300 px-2 py-2 font-medium">
                   {objective.milestone?.name || `Milestone for ${objective.name.replace('Objective', '')}`}
@@ -386,24 +445,49 @@ export default function ExcelTable({
                 {/* Milestone score dropdown - properly aligned */}
                 <td className="border border-gray-300 px-1 py-1">
                   {objective.milestone ? (
-                    <Select
-                      value={objective.milestone.score?.toString() || '-2'}
-                      onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
-                    >
-                      <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500" style={{ 
-                        backgroundColor: getScoreColor(`${objective.milestone.score || -2}.00`),
-                        color: 'white'
-                      }}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="-2">-2</SelectItem>
-                        <SelectItem value="-1">-1</SelectItem>
-                        <SelectItem value="0">0</SelectItem>
-                        <SelectItem value="1">1</SelectItem>
-                        <SelectItem value="2">2</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="w-full relative">
+                          <Select
+                            value={objective.milestone.score?.toString() || '-2'}
+                            onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
+                          >
+                            <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500 font-bold w-full cursor-help" style={{ 
+                              backgroundColor: getScoreColor(`${objective.milestone.score || -2}.00`),
+                              color: 'black'
+                            }}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="-2">-2</SelectItem>
+                              <SelectItem value="-1">-1</SelectItem>
+                              <SelectItem value="0">0</SelectItem>
+                              <SelectItem value="1">1</SelectItem>
+                              <SelectItem value="2">2</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs p-3">
+                        <div className="space-y-2">
+                          <div className="font-semibold text-sm text-blue-900">MS Score Guidelines</div>
+                          <div className="text-xs space-y-1">
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-green-600">+2:</span>
+                              <span>Evidence provided by relevant institution on complete realization of the milestone</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-yellow-600">0:</span>
+                              <span>Evidence that milestone implementation has started but not yet achieved</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-bold text-red-600">-2:</span>
+                              <span>Otherwise (no evidence or incomplete implementation)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   ) : (
                     <div className="text-xs text-center text-gray-400">
                       N/A
@@ -411,13 +495,15 @@ export default function ExcelTable({
                   )}
                 </td>
                 
-                {/* Remarks column for milestone - properly aligned */}
-                <td className="border border-gray-300 px-1 py-1">
-                  <Input
-                    className="h-6 text-xs border-0 p-1"
-                    placeholder="Add remarks"
-                  />
-                </td>
+                                 {/* Remarks column for milestone - properly aligned */}
+                 <td className="border border-gray-300 px-1 py-1">
+                   <Input
+                     className="h-6 text-xs border-0 p-1"
+                     placeholder="Add remarks"
+                     value={cellData[`milestone_${objective.id}_remarks`]?.value || ''}
+                     onChange={(e) => handleMilestoneRemarksChange(objective.id, e.target.value)}
+                   />
+                 </td>
               </tr>
             </React.Fragment>
           ))}

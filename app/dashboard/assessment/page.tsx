@@ -511,6 +511,57 @@ export default function AssessmentPage() {
     toast.success(`Milestone score updated to ${score} (saved locally)`);
   };
 
+  const handleRemarksChange = (indicatorId: number, remarks: string) => {
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
+        objectives: periodData.objectives.map(obj => ({
+          ...obj,
+          indicators: obj.indicators.map(ind => {
+            if (ind.id === indicatorId && ind.score) {
+              return {
+                ...ind,
+                score: {
+                  ...ind.score,
+                  remarks: remarks
+                }
+              };
+            }
+            return ind;
+          })
+        }))
+      })) as AssessmentData[];
+      const updatedData = withRollups(updatedDataRaw);
+      return { ...prev, multiPeriodData: updatedData };
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleMilestoneRemarksChange = (objectiveId: number, remarks: string) => {
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
+        objectives: periodData.objectives.map(obj => {
+          if (obj.id === objectiveId && obj.milestone) {
+            return {
+              ...obj,
+              milestone: {
+                ...obj.milestone,
+                notes: remarks
+              }
+            };
+          }
+          return obj;
+        })
+      })) as AssessmentData[];
+      const updatedData = withRollups(updatedDataRaw);
+      return { ...prev, multiPeriodData: updatedData };
+    });
+    setHasUnsavedChanges(true);
+  };
+
   const getScoreLabel = (score: number) => {
     if (score >= 1) return 'Highly Performing';
     if (score >= 0) return 'Sustained';
@@ -520,10 +571,11 @@ export default function AssessmentPage() {
 
   const getScoreColor = (score: number | undefined) => {
     if (score === undefined) return '';
-    if (score >= 1) return 'bg-green-100 text-green-800';
-    if (score === 0) return 'bg-yellow-100 text-yellow-800';
-    if (score === -1) return 'bg-orange-100 text-orange-800';
-    return 'bg-red-100 text-red-800';
+    if (score >= 2) return 'bg-[#548235] text-white';
+    if (score >= 1) return 'bg-[#A9D08E] text-black';
+    if (score === 0) return 'bg-[#FFFF00] text-black';
+    if (score === -1) return 'bg-[#FFC7CE] text-black';
+    return 'bg-[#FF0000] text-white';
   };
 
   const getScoreHex = (score: number | undefined) => {
@@ -700,7 +752,8 @@ export default function AssessmentPage() {
           if (objective.milestone) {
             milestoneScores[objective.id] = {
               name: objective.milestone.name,
-              score: objective.milestone.score ?? -2
+              score: objective.milestone.score ?? -2,
+              notes: objective.milestone.notes || ''
             };
           }
         });
@@ -723,7 +776,8 @@ export default function AssessmentPage() {
               current_meets_target: indicator.score?.current_meets_target,
               previous_meets_target: indicator.score?.previous_meets_target,
               score_color: indicator.score?.score_color || '#6c757d',
-              score_label: indicator.score?.score_label || 'No Data'
+              score_label: indicator.score?.score_label || 'No Data',
+              remarks: indicator.score?.remarks || ''
             };
           });
         });
@@ -872,6 +926,7 @@ export default function AssessmentPage() {
                   code: '',
                   color: '#ffc107',
                   score: saved.calculated_scores.milestones[obj.id].score,
+                  notes: saved.calculated_scores.milestones[obj.id].notes || '',
                 }
               : undefined,
             indicators: [],
@@ -1346,10 +1401,11 @@ export default function AssessmentPage() {
             text-align: center;
             border-radius: 3px;
           }
-          .score.g { background: #28a745 !important; }
-          .score.y { background: #ffc107 !important; color: #333 !important; }
-          .score.m { background: #e91e63 !important; }
-          .score.r { background: #dc3545 !important; }
+          .score.g2 { background: #548235 !important; }
+          .score.g1 { background: #A9D08E !important; color: #000 !important; }
+          .score.y { background: #FFFF00 !important; color: #000 !important; }
+          .score.r1 { background: #FFC7CE !important; color: #000 !important; }
+          .score.r2 { background: #FF0000 !important; }
           .legend { margin-top: 20px; font-size: 11px; }
           .chip { 
             display: inline-block; 
@@ -1360,10 +1416,11 @@ export default function AssessmentPage() {
             font-size: 10px;
             font-weight: bold;
           }
-          .chip.g { background: #28a745; }
-          .chip.y { background: #ffc107; color: #333; }
-          .chip.m { background: #e91e63; }
-          .chip.r { background: #dc3545; }
+          .chip.g2 { background: #548235; }
+          .chip.g1 { background: #A9D08E; color: #000; }
+          .chip.y { background: #FFFF00; color: #000; }
+          .chip.r1 { background: #FFC7CE; color: #000; }
+          .chip.r2 { background: #FF0000; }
           .legend-item { margin-bottom: 4px; }
         </style>
       `;
@@ -1437,10 +1494,11 @@ export default function AssessmentPage() {
           if (scoreValue !== null && scoreValue !== undefined) {
             const s = Number(scoreValue);
             if (!isNaN(s)) {
-              if (s >= 1) cls = 'g';
+              if (s >= 2) cls = 'g2';
+              else if (s >= 1) cls = 'g1';
               else if (s === 0) cls = 'y';
-              else if (s === -1) cls = 'm';
-              else cls = 'r';
+              else if (s === -1) cls = 'r1';
+              else cls = 'r2';
             }
           }
 
@@ -1460,10 +1518,11 @@ export default function AssessmentPage() {
           if (milestoneScore !== null && milestoneScore !== undefined) {
             const s = Number(milestoneScore);
             if (!isNaN(s)) {
-              if (s >= 1) msCls = 'g';
+              if (s >= 2) msCls = 'g2';
+              else if (s >= 1) msCls = 'g1';
               else if (s === 0) msCls = 'y';
-              else if (s === -1) msCls = 'm';
-              else msCls = 'r';
+              else if (s === -1) msCls = 'r1';
+              else msCls = 'r2';
             }
           }
           
@@ -1477,11 +1536,11 @@ export default function AssessmentPage() {
             </tbody>
           </table>
           <div class="legend">
-            <div class="legend-item"><span class="chip g">Score 2</span> Highly Performing</div>
-            <div class="legend-item"><span class="chip g">Score 1</span> Moderately Performing</div>
+            <div class="legend-item"><span class="chip g2">Score 2</span> Highly Performing</div>
+            <div class="legend-item"><span class="chip g1">Score 1</span> Moderately Performing</div>
             <div class="legend-item"><span class="chip y">Score 0</span> Sustained</div>
-            <div class="legend-item"><span class="chip m">Score -1</span> Underperforming</div>
-            <div class="legend-item"><span class="chip r">Score -2</span> Severely Underperforming</div>
+            <div class="legend-item"><span class="chip r1">Score -1</span> Underperforming</div>
+            <div class="legend-item"><span class="chip r2">Score -2</span> Severely Underperforming</div>
           </div>
         </body>
         </html>
@@ -1956,6 +2015,8 @@ export default function AssessmentPage() {
                       onCellEdit={handleManualEntryChange}
                       onScoreChange={handleScoreChange}
                       onMilestoneScoreChange={handleMilestoneScoreChange}
+                      onRemarksChange={handleRemarksChange}
+                      onMilestoneRemarksChange={handleMilestoneRemarksChange}
                     />
                   );
                 })()}

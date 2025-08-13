@@ -166,11 +166,11 @@ export default function AnalysisPage() {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 4) return '#166534'; // Dark green - Highly performing
-    if (score >= 3) return '#16a34a'; // Light green - Moderately performing
-    if (score >= 2) return '#eab308'; // Yellow - Sustained
-    if (score >= 1) return '#dc2626'; // Red - Underperforming
-    return '#991b1b'; // Dark red - Severely underperforming
+    if (score >= 2) return '#548235';
+    if (score >= 1) return '#A9D08E';
+    if (score === 0) return '#FFFF00';
+    if (score === -1) return '#FFC7CE';
+    return '#FF0000';
   };
 
   const getScoreLabel = (score: number) => {
