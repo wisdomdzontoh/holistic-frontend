@@ -598,126 +598,49 @@ export default function AssessmentPage() {
   };
 
   const computeIndicatorScore = (indicator: any, periods: Period[]) => {
-    const last = periods[periods.length - 1]?.name;
-    if (!last) return indicator;
-    const currVal = indicator?.data_values?.[last]?.value;
-    const target = indicator?.target_value;
-    if (currVal === undefined || currVal === null) return indicator;
+    const hasManualOverride = indicator.score?.is_manual_override || false;
+    const manualScore = indicator.score?.score;
 
-    // Check if we have manual overrides for percent_change or target_gap
-    const hasManualOverride = indicator?.score?.is_manual_override;
-    const manualPercentChange = indicator?.score?.percent_change;
-    const manualTargetGap = indicator?.score?.target_gap;
-
-    // Compute change % and gap % for table/export
-    const prevName = periods.length > 1 ? periods[periods.length - 2]?.name : undefined;
-    const prevVal = prevName ? indicator?.data_values?.[prevName]?.value : undefined;
-    
-    // Use manual values if available, otherwise compute
-    const changePct = hasManualOverride && manualPercentChange !== undefined 
-      ? manualPercentChange 
-      : (function(){
-          if (prevVal === undefined || prevVal === null || Number(prevVal) === 0) return undefined as unknown as number;
-          const change = ((Number(currVal) - Number(prevVal)) / Math.abs(Number(prevVal))) * 100;
-          return isFinite(change) ? Number(change.toFixed(1)) : undefined as unknown as number;
-        })();
-    
-    const gapPct = hasManualOverride && manualTargetGap !== undefined 
-      ? manualTargetGap 
-      : (function(){
-          if (target === null || target === undefined || Number(target) === 0) return undefined as unknown as number;
-          const targetType = (indicator?.target_type || 'increase').toLowerCase();
-          const ratio = Number(currVal) / Number(target);
-          const gap = targetType === 'increase' ? (ratio - 1) * 100 : (1 - ratio) * 100;
-          return isFinite(gap) ? Number(gap.toFixed(1)) : undefined as unknown as number;
-        })();
-
-    const findRuleScore = () => {
-      const prevName = periods.length > 1 ? periods[periods.length - 2]?.name : undefined;
-      const prevVal = prevName ? indicator?.data_values?.[prevName]?.value : undefined;
-      const targetType = (indicator?.target_type || 'increase').toLowerCase();
-
-      const calcGap = () => {
-        if (target === null || target === undefined || Number(target) === 0) return undefined as unknown as number;
-        const ratio = Number(currVal) / Number(target);
-        return targetType === 'increase' ? (ratio - 1) * 100 : (1 - ratio) * 100;
-      };
-      const calcChange = () => {
-        if (prevVal === undefined || prevVal === null || Number(prevVal) === 0) return undefined as unknown as number;
-        return ((Number(currVal) - Number(prevVal)) / Math.abs(Number(prevVal))) * 100;
-      };
-
-      const absoluteValue = Number(currVal);
-      // Use manual values if available, otherwise compute
-      const gapPct = hasManualOverride && manualTargetGap !== undefined ? manualTargetGap : calcGap();
-      const changePct = hasManualOverride && manualPercentChange !== undefined ? manualPercentChange : calcChange();
-
-      // If no scoring rules are available, use default logic
-      if (!scoringRules || !Array.isArray(scoringRules) || scoringRules.length === 0) {
-        // Default scoring logic based on gap and change
-        if (gapPct !== undefined && !isNaN(gapPct)) {
-          const absGap = Math.abs(gapPct);
-          if (absGap <= 10) return 2;  // Very close to target
-          if (absGap <= 25) return 1;  // Close to target
-          if (absGap <= 50) return 0;  // Moderate gap
-          if (absGap <= 75) return -1; // Large gap
-          return -2; // Very large gap
-        }
-        
-        if (changePct !== undefined && !isNaN(changePct)) {
-          if (changePct > 10) return 2;   // Strong improvement
-          if (changePct > 5) return 1;    // Moderate improvement
-          if (changePct > -5) return 0;   // Stable
-          if (changePct > -10) return -1; // Moderate decline
-          return -2; // Strong decline
-        }
-        
-        return undefined as unknown as number;
-      }
-
-      const pick = (perfType: string, metric: number | undefined) => {
-        if (metric === undefined || isNaN(metric as number)) return undefined as unknown as number;
-        const pool = scoringRules.filter((r: any) => (r.performance_type || r.performanceType) === perfType);
-        if (pool.length === 0) return undefined as unknown as number;
-        pool.sort((a: any, b: any) => (b.priority || 0) - (a.priority || 0));
-        const matched = pool.find((r: any) => {
-          const min = r.min_value ?? r.minValue; const max = r.max_value ?? r.maxValue;
-          const minOk = min === null || min === undefined || metric >= Number(min);
-          const maxOk = max === null || max === undefined || metric <= Number(max);
-          return minOk && maxOk;
-        });
-        return matched ? Number(matched.score) : undefined;
-      };
-
-      return (
-        pick('gap', gapPct) ?? pick('change', changePct) ?? pick('absolute', absoluteValue)
-      ) as number;
-    };
-
-    let derivedScore = findRuleScore();
-    if (derivedScore === undefined || isNaN(derivedScore as number)) {
-      if (target === null || target === undefined) return indicator;
-      const type = (indicator?.target_type || 'increase').toLowerCase();
-      if (type === 'increase') {
-        const ratio = Number(target) === 0 ? 0 : Number(currVal) / Number(target);
-        derivedScore = ratio >= 1.05 ? 2 : ratio >= 1.0 ? 1 : ratio >= 0.9 ? 0 : ratio >= 0.7 ? -1 : -2;
-      } else {
-        const ratio = Number(target) === 0 ? 0 : Number(currVal) / Number(target);
-        derivedScore = ratio <= 0.95 ? 2 : ratio <= 1.0 ? 1 : ratio <= 1.1 ? 0 : ratio <= 1.3 ? -1 : -2;
-      }
+    // If manual override exists, return as-is
+    if (hasManualOverride && manualScore !== undefined && manualScore !== null) {
+      return indicator;
     }
-    const scoreColor = getScoreColor(derivedScore as number);
-    const scoreLabel = getScoreLabel(derivedScore as number);
+
+    // Use the score from the API response (backend calculation)
+    // The backend now provides the correct Excel-based scoring
+    const apiScore = indicator.score?.score;
+    const apiScoreColor = indicator.score?.score_color;
+    const apiScoreLabel = indicator.score?.score_label;
+    const apiPercentChange = indicator.score?.percent_change;
+    const apiTargetGap = indicator.score?.target_gap;
+
+    // If the API provided a score, use it
+    if (apiScore !== undefined && apiScore !== null) {
+      return {
+        ...indicator,
+        score: {
+          ...(indicator.score || {}),
+          score: apiScore,
+          score_color: apiScoreColor,
+          score_label: apiScoreLabel,
+          is_manual_override: false,
+          percent_change: apiPercentChange,
+          target_gap: apiTargetGap,
+        }
+      };
+    }
+
+    // Fallback: if no API score, use default -2 (no data)
     return {
       ...indicator,
       score: {
         ...(indicator.score || {}),
-        score: derivedScore as number,
-        score_color: scoreColor,
-        score_label: scoreLabel,
+        score: -2,
+        score_color: '#dc3545',
+        score_label: 'Severely Underperforming',
         is_manual_override: false,
-        percent_change: changePct,
-        target_gap: gapPct,
+        percent_change: indicator.score?.percent_change,
+        target_gap: indicator.score?.target_gap,
       }
     };
   };
