@@ -190,7 +190,7 @@ class AssessmentService {
     org_unit_ids: string[];
     periods: Period[];
     include_scores?: boolean;
-  }): Promise<{ status: string; file_path: string; file_url: string }>{
+  }): Promise<Blob>{
     const formattedPeriods = params.periods.map(period => ({
       name: period.name,
       period_type: period.periodType,
@@ -198,15 +198,25 @@ class AssessmentService {
       end_date: period.endDate,
       code: period.code
     }));
-    return this.makeRequest('/assessments/holistic-assessment/export_excel/', {
+    
+    const response = await fetch(`${this.baseUrl}/assessments/holistic-assessment/export_excel/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Include cookies for session management
       body: JSON.stringify({
         org_unit_ids: params.org_unit_ids,
         periods: formattedPeriods,
         include_scores: params.include_scores ?? true,
       }),
     });
+    
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+    
+    return response.blob();
   }
 
   async getAssessmentPeriods(): Promise<AssessmentPeriod[]> {

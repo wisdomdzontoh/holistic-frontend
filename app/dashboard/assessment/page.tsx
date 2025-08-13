@@ -257,15 +257,15 @@ export default function AssessmentPage() {
                 };
               } else {
                 // Regular period data update
-                return {
-                  ...indicator,
-                  data_values: {
-                    ...indicator.data_values,
-                    [period]: {
-                      value: parseFloat(value) || 0,
-                      calculated_value: parseFloat(value) || 0,
-                      created_at: new Date().toISOString()
-                    }
+              return {
+                ...indicator,
+                data_values: {
+                  ...indicator.data_values,
+                  [period]: {
+                    value: parseFloat(value) || 0,
+                    calculated_value: parseFloat(value) || 0,
+                    created_at: new Date().toISOString()
+                  }
                   }
                 };
               }
@@ -344,17 +344,17 @@ export default function AssessmentPage() {
                         percent_change: response.indicator_score.percent_change,
                         target_gap: response.indicator_score.target_gap,
                         is_manual_override: response.indicator_score.is_manual_override || false
-                        }
-                      };
-                    }
-                    return indicator;
-                  })
-                }))
-              })) as AssessmentData[];
-              
-              const updatedData = withRollups(updatedDataRaw);
-              return { ...prev, multiPeriodData: updatedData };
-            });
+                }
+              };
+            }
+            return indicator;
+          })
+        }))
+      })) as AssessmentData[];
+      
+      const updatedData = withRollups(updatedDataRaw);
+      return { ...prev, multiPeriodData: updatedData };
+    });
           }
         }
       } catch (error) {
@@ -444,17 +444,17 @@ export default function AssessmentPage() {
                         score_color: response.indicator_score.score_color,
                         score_label: response.indicator_score.score_label,
                         is_manual_override: response.indicator_score.is_manual_override || false
-                      }
-                    };
-                  }
-                  return indicator;
-                })
-              }))
-            })) as AssessmentData[];
-            
-            const updatedData = withRollups(updatedDataRaw);
-            return { ...prev, multiPeriodData: updatedData };
-          });
+                }
+              };
+            }
+            return indicator;
+          })
+        }))
+      })) as AssessmentData[];
+      
+      const updatedData = withRollups(updatedDataRaw);
+      return { ...prev, multiPeriodData: updatedData };
+    });
         }
       } catch (error) {
         console.error('Error updating backend score:', error);
@@ -475,61 +475,40 @@ export default function AssessmentPage() {
       return;
     }
 
-    // Get org unit and assessment period info
-    const orgUnitId = state.multiPeriodData?.[0]?.org_unit_id;
-    const assessmentPeriodId = state.multiPeriodData?.[0]?.assessment_period?.id;
-    const orgUnitName = state.multiPeriodData?.[0]?.org_unit_name;
+    const numScore = parseFloat(score);
+    const scoreColor = getScoreColor(numScore);
+    const scoreLabel = getScoreLabel(numScore);
 
-    if (!orgUnitId || !assessmentPeriodId) {
-      toast.error('Missing organization unit or assessment period information');
-      return;
-    }
-
-    try {
-      // Update the milestone score in the backend
-      await assessmentService.updateMilestoneScore(
-        objective.milestone.id, 
-        parseInt(score),
-        orgUnitId,
-        assessmentPeriodId,
-        orgUnitName
-      );
+    // Update the local state immediately for responsiveness
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
       
-      // Update the local state
-      setState(prev => {
-        if (!prev.multiPeriodData) return prev;
-        
-        const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
-          ...periodData,
-          objectives: periodData.objectives.map(obj => {
-            if (obj.id === objectiveId && obj.milestone) {
-              const numScore = parseFloat(score);
-              const scoreColor = getScoreColor(numScore);
-              const scoreLabel = getScoreLabel(numScore);
-              
-              return {
-                ...obj,
-                milestone: {
-                  ...obj.milestone,
-                  score: numScore,
-                  score_color: scoreColor,
-                  score_label: scoreLabel
-                }
-              };
-            }
-            return obj;
-          })
-        })) as AssessmentData[];
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
+        objectives: periodData.objectives.map(obj => {
+          if (obj.id === objectiveId && obj.milestone) {
+            return {
+              ...obj,
+              milestone: {
+                ...obj.milestone,
+                score: numScore,
+                score_color: scoreColor,
+                score_label: scoreLabel
+              }
+            };
+          }
+          return obj;
+        })
+      })) as AssessmentData[];
 
-        const updatedData = withRollups(updatedDataRaw);
-        return { ...prev, multiPeriodData: updatedData };
-      });
+      const updatedData = withRollups(updatedDataRaw);
+      return { ...prev, multiPeriodData: updatedData };
+    });
 
-      toast.success(`Milestone score updated to ${score}`);
-    } catch (error) {
-      console.error('Error updating milestone score:', error);
-      toast.error('Failed to update milestone score');
-    }
+    // Set unsaved changes flag
+    setHasUnsavedChanges(true);
+    
+    toast.success(`Milestone score updated to ${score} (saved locally)`);
   };
 
   const getScoreLabel = (score: number) => {
@@ -1108,7 +1087,7 @@ export default function AssessmentPage() {
     let changeCategory = null;
     if (currentValue !== null && previousValue !== null && previousValue !== 0) {
       const rawChange = ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-      percentChange = rawChange;
+      percentChange = Math.round(rawChange * 100) / 100; // Round to 2 decimal places
       
       // For negative indicators, invert the change for scoring
       const performanceChange = targetType === 'decrease' ? -rawChange : rawChange;
@@ -1123,7 +1102,7 @@ export default function AssessmentPage() {
     let targetGap = null;
     let gapCategory = null;
     if (currentValue !== null && targetValue !== 0) {
-      targetGap = ((currentValue - targetValue) / targetValue) * 100;
+      targetGap = Math.round(((currentValue - targetValue) / targetValue) * 100 * 100) / 100; // Round to 2 decimal places
       
       if (targetGap <= 10) gapCategory = "<=10%";
       else if (targetGap <= 40) gapCategory = "10%<PT<=40%";
@@ -1257,7 +1236,7 @@ export default function AssessmentPage() {
   };
 
   const saveManualEntries = async () => {
-    if (!hasUnsavedChanges || Object.keys(manualEntries).length === 0) {
+    if (!hasUnsavedChanges) {
       toast.info('No changes to save');
       return;
     }
@@ -1265,8 +1244,8 @@ export default function AssessmentPage() {
     try {
       setState(prev => ({ ...prev, loading: true }));
       
-      // For now, we just clear the unsaved changes flag
-      // The manual entries are already saved in the multiPeriodData state
+      // Clear the unsaved changes flag
+      // The manual entries and milestone scores are already saved in the multiPeriodData state
       // and will be saved to backend when the user saves the entire assessment
       setManualEntries({});
       setHasUnsavedChanges(false);
@@ -1341,12 +1320,12 @@ export default function AssessmentPage() {
         return;
       }
 
-      const org = state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || 'Org Unit';
-      const periods = state.selectedPeriods.map(p=>p.displayName).join(', ');
+    const org = state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || 'Org Unit';
+    const periods = state.selectedPeriods.map(p=>p.displayName).join(', ');
       
-      const style = `
-        <style>
-          @media print {
+    const style = `
+      <style>
+        @media print {
             body { margin: 0; padding: 16px; }
             table { page-break-inside: avoid; }
             .obj { page-break-inside: avoid; }
@@ -1415,18 +1394,18 @@ export default function AssessmentPage() {
             <tbody>
       `;
 
-      state.multiPeriodData[0].objectives.forEach((obj, oi) => {
+    state.multiPeriodData[0].objectives.forEach((obj, oi) => {
         html += `<tr class="obj"><td colspan="${2 + state.selectedPeriods.length + 4}">Objective ${oi+1}: ${obj.name}</td></tr>`;
         
         obj.indicators.forEach((ind: any, ii: number) => {
-          html += '<tr>';
+        html += '<tr>';
           html += `<td>${oi+1}.${ii+1}</td><td style="text-align: left;">${ind.name}</td>`;
           
           // Performance trend columns
           state.selectedPeriods.forEach(p => {
-            const v = ind?.data_values?.[p.name]?.value ?? '';
-            html += `<td>${v}</td>`;
-          });
+          const v = ind?.data_values?.[p.name]?.value ?? '';
+          html += `<td>${v}</td>`;
+        });
 
           // Calculate change and gap
           const lastName = state.selectedPeriods[state.selectedPeriods.length-1].name;
@@ -1469,12 +1448,12 @@ export default function AssessmentPage() {
           const targetDisplay = ind.target_display || ind.target_value || '';
           
           html += `<td>${changeValue}</td><td>${gapValue}</td><td>${targetDisplay}</td><td class="score ${cls}">${scoreValue ?? ''}</td>`;
-          html += '</tr>';
-        });
+        html += '</tr>';
+      });
 
         // Milestone row
         if ((obj as any).milestone?.name) {
-          const ms = (obj as any).milestone;
+        const ms = (obj as any).milestone;
           const milestoneScore = ms.score;
           
           let msCls = '';
@@ -1604,12 +1583,12 @@ export default function AssessmentPage() {
                   <TooltipTrigger asChild>
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-medium text-gray-700">Sector Score:</span>
-                      <span
+                    <span
                         className="px-3 py-1 rounded-full text-white text-sm font-semibold shadow-sm"
-                        style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
-                      >
+                      style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
+                    >
                         {typeof state.multiPeriodData[0].sector_score.overall_score === 'number' ? state.multiPeriodData[0].sector_score.overall_score.toFixed(2) : '-'}
-                      </span>
+                    </span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -1678,7 +1657,7 @@ export default function AssessmentPage() {
                   </div>
                 </div>
               </div>
-
+              
               {/* Export Menu */}
               <div className="relative group">
                 <Button 
@@ -1697,23 +1676,23 @@ export default function AssessmentPage() {
                       onClick={async ()=>{
                         if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
                         try{
-                          const res = await assessmentService.exportHolisticExcel({
+                          const blob = await assessmentService.exportHolisticExcel({
                             org_unit_ids: state.selectedOrgUnits,
                             periods: state.selectedPeriods,
                             include_scores: true,
                           });
-                          const url = res?.file_url || res?.file_path;
-                          if (url) {
-                            const href = url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url}`;
-                            const a = document.createElement('a');
-                            a.href = href;
-                            a.setAttribute('download', href.split('/').pop() || 'assessment.xlsx');
-                            a.style.display = 'none';
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            toast.success('Excel export generated');
-                          }
+                          
+                          // Create download link
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.setAttribute('download', `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
+                          a.style.display = 'none';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          window.URL.revokeObjectURL(url);
+                          toast.success('Excel export generated');
                         }catch(e){
                           console.error('Export Excel error', e);
                           toast.error('Failed to export Excel');
@@ -1737,7 +1716,7 @@ export default function AssessmentPage() {
                   </div>
                 </div>
               </div>
-
+              
               {/* Generate Report Button */}
               <Button 
                 onClick={handleGenerateReport}
@@ -1760,7 +1739,7 @@ export default function AssessmentPage() {
               </Button>
             </div>
           </div>
-        </div>
+          </div>
 
           {/* Enhanced Configuration Section */}
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-6">
@@ -1779,41 +1758,41 @@ export default function AssessmentPage() {
                     Organization Units
                   </label>
                   <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsOrgUnitModalOpen(true)}
-                      disabled={state.loading}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsOrgUnitModalOpen(true)}
+                  disabled={state.loading}
                       className="w-full justify-start"
-                    >
+                >
                       <Plus className="h-4 w-4 mr-2" />
                       Select Organization Units
-                    </Button>
+                </Button>
                     <div className="flex flex-wrap gap-2">
-                      {state.selectedOrgUnits.length ? (
-                        state.selectedOrgUnits.map((orgUnitId, index) => {
-                          const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
-                          return (
+                  {state.selectedOrgUnits.length ? (
+                    state.selectedOrgUnits.map((orgUnitId, index) => {
+                      const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
+                      return (
                             <Badge key={orgUnitId} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                              {orgUnit?.displayName || orgUnitId}
-                              <button
-                                onClick={() => setState(prev => ({
-                                  ...prev,
-                                  selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
-                                }))}
-                                className="ml-1 hover:text-blue-800"
-                              >
-                                ×
-                              </button>
-                            </Badge>
-                          );
-                        })
-                      ) : (
+                          {orgUnit?.displayName || orgUnitId}
+                          <button
+                            onClick={() => setState(prev => ({
+                              ...prev,
+                              selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
+                            }))}
+                            className="ml-1 hover:text-blue-800"
+                          >
+                            ×
+                          </button>
+                        </Badge>
+                      );
+                    })
+                  ) : (
                         <span className="text-sm text-gray-400 italic">No units selected</span>
-                      )}
+                  )}
                     </div>
-                  </div>
                 </div>
+              </div>
 
                 {/* Assessment Periods */}
                 <div className="space-y-3">
@@ -1822,38 +1801,38 @@ export default function AssessmentPage() {
                     Assessment Periods
                   </label>
                   <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsPeriodModalOpen(true)}
-                      disabled={state.loading}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPeriodModalOpen(true)}
+                  disabled={state.loading}
                       className="w-full justify-start"
-                    >
+                >
                       <Plus className="h-4 w-4 mr-2" />
-                      Select Periods
-                    </Button>
+                  Select Periods
+                </Button>
                     <div className="flex flex-wrap gap-2">
-                      {state.selectedPeriods.length ? (
-                        state.selectedPeriods.map((period, index) => (
+                  {state.selectedPeriods.length ? (
+                    state.selectedPeriods.map((period, index) => (
                           <Badge key={period.id} variant="secondary" className="bg-green-50 text-green-700 border-green-200">
-                            {period.displayName}
-                            <button
-                              onClick={() => setState(prev => ({
-                                ...prev,
-                                selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
-                              }))}
-                              className="ml-1 hover:text-green-800"
-                            >
-                              ×
-                            </button>
-                          </Badge>
-                        ))
-                      ) : (
+                        {period.displayName}
+                        <button
+                          onClick={() => setState(prev => ({
+                            ...prev,
+                            selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
+                          }))}
+                          className="ml-1 hover:text-green-800"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))
+                  ) : (
                         <span className="text-sm text-gray-400 italic">No periods selected</span>
-                      )}
-                    </div>
-                  </div>
+                  )}
                 </div>
+              </div>
+              </div>
 
                 {/* Data Source Filter */}
                 <div className="space-y-3">
@@ -1887,10 +1866,10 @@ export default function AssessmentPage() {
                       Manual Only
                     </Button>
                   </div>
-                </div>
               </div>
             </div>
           </div>
+        </div>
 
 
 
