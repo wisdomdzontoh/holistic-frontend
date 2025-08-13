@@ -38,7 +38,7 @@ export interface DashboardStats {
     score_label: string;
   }>;
   recent_activity: Array<{
-    id: string;
+  id: string;
     type: 'assessment_created' | 'assessment_updated' | 'data_synced' | 'score_calculated';
     title: string;
     description: string;

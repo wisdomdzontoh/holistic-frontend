@@ -80,10 +80,10 @@ export default function ExcelTable({
               isDHIS2Data: false
             };
             
-            // Target column
+            // Target column - display target_display but keep target_value for scoring
             const targetKey = `${indicator.id}_target`;
             newCellData[targetKey] = {
-              value: indicator.target_value?.toString() || '',
+              value: indicator.target_display || indicator.target_value?.toString() || '',
               isEditable: false,
               isDHIS2Data: false
             };
@@ -131,11 +131,11 @@ export default function ExcelTable({
     const numScore = parseFloat(score);
     if (isNaN(numScore)) return '#6c757d';
     
-    if (numScore === 2) return '#116045'; // Green
-    if (numScore === 1) return '#2AA63E'; // Light-green
-    if (numScore >= 0) return '#ffc107'; // Yellow
-    if (numScore >= -1) return '#FF6467'; // light-red
-    return '#C11007'; // Deep-red
+    // Flow diagram colors: -2 (Red), -1 (Magenta), 0 (Yellow), 1 (Green), 2 (Green)
+    if (numScore >= 1) return '#28a745'; // Green for 1 and 2
+    if (numScore === 0) return '#ffc107'; // Yellow for 0
+    if (numScore === -1) return '#e91e63'; // Magenta for -1
+    return '#dc3545'; // Red for -2
   };
 
   const getRowBackground = (type: string) => {
@@ -153,17 +153,17 @@ export default function ExcelTable({
     if (!val) return '';
     const n = parseFloat(val);
     if (isNaN(n)) return '';
-    // positive change → light green, negative → light red, near zero → light yellow
+    // Flow diagram: >5% (Green), -5% to 5% (Yellow), <-5% (Red)
     if (n > 5) return 'bg-green-50';
-    if (n < -5) return 'bg-red-50';
-    return 'bg-yellow-50';
+    if (n >= -5) return 'bg-yellow-50';
+    return 'bg-red-50';
   };
 
   const getGapBg = (val?: string) => {
     if (!val) return '';
     const n = Math.abs(parseFloat(val));
     if (isNaN(n)) return '';
-    // <=10% close to target → light green, 10-40 → light yellow, >40 → light red
+    // Flow diagram: ≤10% (Green), 10%<PT≤40% (Yellow), >40% (Red)
     if (n <= 10) return 'bg-green-50';
     if (n <= 40) return 'bg-yellow-50';
     return 'bg-red-50';
