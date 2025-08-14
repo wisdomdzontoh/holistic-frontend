@@ -1118,7 +1118,13 @@ export default function AssessmentPage() {
 
   // Real-time scoring calculation for manual entries
   const calculateManualScore = (indicator: any, currentValue: number, previousValue: number | null) => {
-    const targetValue = Number(indicator.target_value);
+    // Calculate the correct target value for gap analysis
+    // For range indicators, use Excel's formula: (Upper Limit - Current Value) / Current Value
+    // For other indicators, use the target_value
+    let targetValue = Number(indicator.target_value);
+    const targetFormat = indicator.target_format || 'SINGLE';
+    const targetUpper = indicator.target_upper_limit;
+    
     const targetType = indicator.target_type || 'increase';
     
     // Step 1: Data Provided
@@ -1155,12 +1161,28 @@ export default function AssessmentPage() {
     // Step 5: Target Gap
     let targetGap = null;
     let gapCategory = null;
-    if (currentValue !== null && targetValue !== 0) {
-      targetGap = Math.round(((currentValue - targetValue) / targetValue) * 100 * 100) / 100; // Round to 2 decimal places
+    if (currentValue !== null && currentValue !== 0) {
+      if (targetFormat === 'RANGE' && targetUpper !== null) {
+        // For range indicators: (Target upper limit - Current Value) / Current Value * 100
+        targetGap = Math.round(((Number(targetUpper) - currentValue) / currentValue) * 100 * 100) / 100; // Round to 2 decimal places
+      } else {
+        // For non-range indicators
+        if (targetValue !== 0) {
+          if (targetType === 'increase') {
+            // For increase indicators: (Current Value - Target Value) / Target Value * 100
+            targetGap = Math.round(((currentValue - targetValue) / targetValue) * 100 * 100) / 100; // Round to 2 decimal places
+          } else {
+            // For decrease indicators: (Target Value - Current Value) / Current Value * 100
+            targetGap = Math.round(((targetValue - currentValue) / currentValue) * 100 * 100) / 100; // Round to 2 decimal places
+          }
+        }
+      }
       
-      if (targetGap <= 10) gapCategory = "<=10%";
-      else if (targetGap <= 40) gapCategory = "10%<PT<=40%";
-      else gapCategory = ">40%";
+      if (targetGap !== null) {
+        if (targetGap <= 10) gapCategory = "<=10%";
+        else if (targetGap <= 40) gapCategory = "10%<PT<=40%";
+        else gapCategory = ">40%";
+      }
     }
     
     // Step 6: Final Score Calculation (Excel formula)
