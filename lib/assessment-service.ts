@@ -358,7 +358,13 @@ class AssessmentService {
     periods?: Period[]; // Add periods parameter for proper period codes
   }): Promise<any> {
     // Use the new real-time architecture instead of the old sync service
-    let periods = [];
+    let periods: Array<{
+      name: string;
+      period_type: string;
+      start_date: string;
+      end_date: string;
+      code: string;
+    }> = [];
     
     if (syncParams.periods && syncParams.periods.length > 0) {
       // Use the actual period codes from the periods array
