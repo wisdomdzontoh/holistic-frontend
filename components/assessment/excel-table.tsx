@@ -46,12 +46,18 @@ export default function ExcelTable({
         periodData.objectives.forEach((objective) => {
           
           objective.indicators.forEach((indicator) => {
+            // Debug: Log indicator data_values
+            console.log(`ExcelTable: Indicator ${indicator.id} (${indicator.name}) data_values:`, indicator.data_values);
+            
             // Performance trend columns (period data)
             selectedPeriods.forEach((period) => {
               // Use period.code instead of period.name to match backend data keys
               const periodKey = period.code || period.name;
               const cellKey = `${indicator.id}_${periodKey}`;
               const dataValue = indicator.data_values && indicator.data_values[periodKey];
+              
+              // Debug: Log individual period data
+              console.log(`ExcelTable: Period ${periodKey} data for indicator ${indicator.id}:`, dataValue);
               
               // Check if this is DHIS2 data (has dhis2_uid) or manual data
               const isDHIS2Data = !!indicator.dhis2_uid;

@@ -427,11 +427,11 @@ export default function AssessmentPage() {
 
         // Update local state with backend response if successful
         if (response.success) {
-          setState(prev => {
-            if (!prev.multiPeriodData) return prev;
-            
-            const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
-              ...periodData,
+    setState(prev => {
+      if (!prev.multiPeriodData) return prev;
+      
+      const updatedDataRaw = prev.multiPeriodData.map(periodData => ({
+        ...periodData,
               objectives: periodData.objectives.map(objective => ({
                 ...objective,
                 indicators: objective.indicators.map(indicator => {
@@ -475,10 +475,10 @@ export default function AssessmentPage() {
       return;
     }
 
-    const numScore = parseFloat(score);
-    const scoreColor = getScoreColor(numScore);
-    const scoreLabel = getScoreLabel(numScore);
-
+            const numScore = parseFloat(score);
+            const scoreColor = getScoreColor(numScore);
+            const scoreLabel = getScoreLabel(numScore);
+            
     // Update the local state immediately for responsiveness
     setState(prev => {
       if (!prev.multiPeriodData) return prev;
@@ -722,6 +722,7 @@ export default function AssessmentPage() {
       const orgUnitId = state.selectedOrgUnits[0] || '';
       const orgUnitName = state.multiPeriodData[0]?.org_unit_name || '';
       const periods = state.selectedPeriods.map(p => p.name);
+      const periodCodes = state.selectedPeriods.map(p => p.code);
       
       // Extract indicator data
       const indicatorData: Record<string, any> = {};
@@ -729,10 +730,21 @@ export default function AssessmentPage() {
         periodData.objectives.forEach(objective => {
           objective.indicators.forEach(indicator => {
             const key = `${indicator.id}`;
+            
+            // Debug: Log the data_values structure
+            console.log(`Saving indicator ${indicator.id} (${indicator.name}) data_values:`, indicator.data_values);
+            
             indicatorData[key] = {
               name: indicator.name,
               dhis2_uid: indicator.dhis2_uid,
               target_value: indicator.target_value,
+              target_display: indicator.target_display,
+              target_lower_limit: indicator.target_lower_limit,
+              target_upper_limit: indicator.target_upper_limit,
+              target_format: indicator.target_format,
+              target_type: indicator.target_type,
+              target_operator: indicator.target_operator,
+              target_measurement_type: indicator.target_measurement_type,
               data_values: indicator.data_values,
               score: indicator.score,
               // persist structure to reconstruct on open
@@ -788,6 +800,7 @@ export default function AssessmentPage() {
         org_unit_id: orgUnitId,
         org_unit_name: orgUnitName,
         periods: periods,
+        period_codes: periodCodes, // Save period codes for proper reconstruction
         indicator_data: indicatorData,
         calculated_scores: {
           milestones: milestoneScores,
@@ -875,6 +888,8 @@ export default function AssessmentPage() {
       const res = await assessmentService.loadAssessment({ assessment_id: assessmentId });
       const saved = res?.assessment || res;
 
+      // Use saved period codes if available, otherwise fallback to names
+      const savedPeriodCodes = saved?.metadata?.period_codes || saved?.period_codes || [];
       const loadedPeriods: Period[] = (saved?.periods || []).map((name: string, idx: number) => ({
         id: String(idx + 1),
         name,
@@ -882,7 +897,7 @@ export default function AssessmentPage() {
         startDate: '',
         endDate: '',
         periodType: 'yearly',
-        code: name,
+        code: savedPeriodCodes[idx] || name, // Use saved period code if available, otherwise fallback to name
       }));
 
       const multi: AssessmentData[] = [
@@ -948,6 +963,12 @@ export default function AssessmentPage() {
         const ind = saved.indicator_data[key];
         const objId = ind.objective_id ? String(ind.objective_id) : 'default';
         if (!indicatorsByObjective[objId]) indicatorsByObjective[objId] = [];
+        // Get saved indicator score data
+        const savedScore = saved?.calculated_scores?.indicators?.[key];
+        
+        // Debug: Log the loaded data_values structure
+        console.log(`Loading indicator ${key} (${ind.name}) data_values:`, ind.data_values);
+        
         indicatorsByObjective[objId].push({
           id: Number(key),
           name: ind.name,
@@ -956,9 +977,28 @@ export default function AssessmentPage() {
           indicator_number: ind.indicator_number || '',
           display_order: ind.display_order || 0,
           target_value: ind.target_value ?? null,
+          target_display: ind.target_display,
+          target_lower_limit: ind.target_lower_limit,
+          target_upper_limit: ind.target_upper_limit,
+          target_format: ind.target_format || 'SINGLE',
           target_type: ind.target_type || 'increase',
+          target_operator: ind.target_operator || '>=',
+          target_measurement_type: ind.target_measurement_type || 'ABSOLUTE',
           weight: 1,
-          score: ind.score,
+          score: savedScore ? {
+            score: savedScore.score || 0,
+            current_value: savedScore.current_value,
+            previous_value: savedScore.previous_value,
+            percent_change: savedScore.percent_change,
+            target_gap: savedScore.target_gap,
+            change_category: savedScore.change_category,
+            gap_category: savedScore.gap_category,
+            current_meets_target: savedScore.current_meets_target,
+            previous_meets_target: savedScore.previous_meets_target,
+            score_color: savedScore.score_color || '#6c757d',
+            score_label: savedScore.score_label || 'No Data',
+            remarks: savedScore.remarks || ''
+          } : ind.score,
           data_values: ind.data_values || {},
         });
       });
@@ -989,11 +1029,29 @@ export default function AssessmentPage() {
 
       multi[0].objectives = objectives as any;
 
+      // Restore manual entries from saved data
+      const restoredManualEntries: Record<string, any> = {};
+      multi[0].objectives.forEach(objective => {
+        objective.indicators.forEach(indicator => {
+          if (indicator.data_values) {
+            Object.keys(indicator.data_values).forEach(period => {
+              const dataValue = indicator.data_values[period];
+              if (dataValue && dataValue.manual_override !== undefined) {
+                const entryKey = `${indicator.id}_${period}`;
+                restoredManualEntries[entryKey] = dataValue.manual_override;
+              }
+            });
+          }
+        });
+      });
+
       setState((prev) => ({
         ...prev,
         selectedOrgUnits: saved?.org_unit_id ? [saved.org_unit_id] : prev.selectedOrgUnits,
         selectedPeriods: loadedPeriods.length ? loadedPeriods : prev.selectedPeriods,
         multiPeriodData: multi,
+        manualEntries: restoredManualEntries, // Restore manual entries
+        hasUnsavedChanges: false, // Reset unsaved changes flag
         currentAssessmentId: assessmentId, // Set the current assessment ID for updates
         currentAssessmentName: saved?.name || '', // Store the assessment name
         loading: false,
@@ -1116,30 +1174,50 @@ export default function AssessmentPage() {
     return `${state.selectedPeriods.length} periods selected`;
   };
 
-  // Real-time scoring calculation for manual entries
+  // Real-time scoring calculation for manual entries - matches backend HolisticScoringService
   const calculateManualScore = (indicator: any, currentValue: number, previousValue: number | null) => {
-    // Calculate the correct target value for gap analysis
-    // For range indicators, use Excel's formula: (Upper Limit - Current Value) / Current Value
-    // For other indicators, use the target_value
-    let targetValue = Number(indicator.target_value);
-    const targetFormat = indicator.target_format || 'SINGLE';
-    const targetUpper = indicator.target_upper_limit;
-    
-    const targetType = indicator.target_type || 'increase';
-    
     // Step 1: Data Provided
-    const dataProvided = currentValue !== null && currentValue !== undefined && currentValue !== 0;
+    const dataProvided = currentValue !== null && currentValue !== undefined;
     if (!dataProvided) return { score: -2, percent_change: null, target_gap: null };
     
     // Step 2: First Year
-    const isFirstYear = previousValue === null || previousValue === undefined || previousValue === 0;
+    const isFirstYear = previousValue === null || previousValue === undefined;
     
-    // Step 3: Target Achieved
+    // Step 3: Target Achieved - use target format and operator logic
     let targetAchieved = false;
-    if (targetType === 'increase') {
-      targetAchieved = currentValue >= targetValue;
-    } else {
-      targetAchieved = currentValue <= targetValue;
+    const targetFormat = indicator.target_format || 'SINGLE';
+    const targetType = indicator.target_type || 'increase';
+    const targetOperator = indicator.target_operator || '>=';
+    
+    if (currentValue !== null) {
+      if (targetFormat === 'RANGE') {
+        // Range target: check if current value is within the range
+        const lowerLimit = indicator.target_lower_limit;
+        const upperLimit = indicator.target_upper_limit;
+        if (lowerLimit !== null && upperLimit !== null) {
+          targetAchieved = currentValue >= lowerLimit && currentValue <= upperLimit;
+        } else {
+          // Fallback to single target value
+          const targetValue = Number(indicator.target_value);
+          if (targetValue !== 0) {
+            targetAchieved = currentValue >= targetValue;
+          }
+        }
+      } else {
+        // Single value target: use the target_operator
+        const targetValue = Number(indicator.target_value);
+        if (targetValue !== 0) {
+          if (targetOperator === '>=') targetAchieved = currentValue >= targetValue;
+          else if (targetOperator === '>') targetAchieved = currentValue > targetValue;
+          else if (targetOperator === '<=') targetAchieved = currentValue <= targetValue;
+          else if (targetOperator === '<') targetAchieved = currentValue < targetValue;
+          else if (targetOperator === '=') targetAchieved = currentValue === targetValue;
+          else {
+            // Fallback to target_type logic
+            targetAchieved = targetType === 'increase' ? currentValue >= targetValue : currentValue <= targetValue;
+          }
+        }
+      }
     }
     
     // Step 4: Performance Change
@@ -1158,22 +1236,23 @@ export default function AssessmentPage() {
       else if (performanceChange > 5) changeCategory = ">5%";
     }
     
-    // Step 5: Target Gap
+    // Step 5: Target Gap - use the updated formulas
     let targetGap = null;
     let gapCategory = null;
     if (currentValue !== null && currentValue !== 0) {
-      if (targetFormat === 'RANGE' && targetUpper !== null) {
+      if (targetFormat === 'RANGE' && indicator.target_upper_limit !== null) {
         // For range indicators: (Target upper limit - Current Value) / Current Value * 100
-        targetGap = Math.round(((Number(targetUpper) - currentValue) / currentValue) * 100 * 100) / 100; // Round to 2 decimal places
+        targetGap = Math.round(((Number(indicator.target_upper_limit) - currentValue) / currentValue) * 100 * 100) / 100;
       } else {
         // For non-range indicators
+        const targetValue = Number(indicator.target_value);
         if (targetValue !== 0) {
           if (targetType === 'increase') {
             // For increase indicators: (Current Value - Target Value) / Target Value * 100
-            targetGap = Math.round(((currentValue - targetValue) / targetValue) * 100 * 100) / 100; // Round to 2 decimal places
+            targetGap = Math.round(((currentValue - targetValue) / targetValue) * 100 * 100) / 100;
           } else {
             // For decrease indicators: (Target Value - Current Value) / Current Value * 100
-            targetGap = Math.round(((targetValue - currentValue) / currentValue) * 100 * 100) / 100; // Round to 2 decimal places
+            targetGap = Math.round(((targetValue - currentValue) / currentValue) * 100 * 100) / 100;
           }
         }
       }
@@ -1185,7 +1264,7 @@ export default function AssessmentPage() {
       }
     }
     
-    // Step 6: Final Score Calculation (Excel formula)
+    // Step 6: Final Score Calculation - matches backend _calculate_final_score
     if (isFirstYear) {
       return { 
         score: targetAchieved ? 1 : 0, 
@@ -1195,12 +1274,14 @@ export default function AssessmentPage() {
     }
     
     if (targetAchieved) {
+      // Target WAS achieved - check performance change
       if (changeCategory === ">5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "5%<=C>-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
-      if (changeCategory === "-10%<C<=-5%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
+      if (changeCategory === "-10%<C<=-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "<=-10%") return { score: 0, percent_change: percentChange, target_gap: targetGap };
       return { score: 0, percent_change: percentChange, target_gap: targetGap };
     } else {
+      // Target NOT achieved - check performance change
       if (changeCategory === ">5%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "5%<=C>-5%") {
         if (gapCategory === "<=10%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
@@ -1235,11 +1316,15 @@ export default function AssessmentPage() {
           ...obj,
           indicators: obj.indicators.map(ind => {
             if (ind.id === indicatorId) {
-              // Update data values
+              // Find the period object to get its 'code'
+              const selectedPeriodObj = state.selectedPeriods.find(p => p.name === period);
+              const periodCode = selectedPeriodObj?.code || period; // Fallback to name if code not found
+              
+              // Update data values using periodCode
               const updatedDataValues = {
                 ...ind.data_values,
-                [period]: {
-                  ...ind.data_values?.[period],
+                [periodCode]: {
+                  ...ind.data_values?.[periodCode],
                   value: newValue,
                   manual_override: newValue
                 }
@@ -1249,8 +1334,11 @@ export default function AssessmentPage() {
               const periods = state.selectedPeriods;
               const currentPeriodIndex = periods.findIndex(p => p.name === period);
               const currentValue = newValue;
-              const previousValue = currentPeriodIndex > 0 ? 
-                updatedDataValues[periods[currentPeriodIndex - 1].name]?.value : null;
+              
+              // Get previous value using periodCode as well
+              const previousPeriodObj = currentPeriodIndex > 0 ? periods[currentPeriodIndex - 1] : null;
+              const previousValue = previousPeriodObj ? 
+                updatedDataValues[previousPeriodObj.code]?.value : null;
               
               // Calculate new score
               const scoreResult = calculateManualScore(ind, currentValue || 0, previousValue);
@@ -1764,15 +1852,15 @@ export default function AssessmentPage() {
                           
                           // Create download link
                           const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
+                            const a = document.createElement('a');
                           a.href = url;
                           a.setAttribute('download', `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
-                          a.style.display = 'none';
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
+                            a.style.display = 'none';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
                           window.URL.revokeObjectURL(url);
-                          toast.success('Excel export generated');
+                            toast.success('Excel export generated');
                         }catch(e){
                           console.error('Export Excel error', e);
                           toast.error('Failed to export Excel');

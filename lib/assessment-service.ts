@@ -41,7 +41,12 @@ export interface IndicatorData {
   display_order: number;
   target_value: number | null;
   target_display?: string;
+  target_lower_limit?: number | null;
+  target_upper_limit?: number | null;
+  target_format?: string;
   target_type: string;
+  target_operator?: string;
+  target_measurement_type?: string;
   weight: number;
   score?: IndicatorScoreData;
   data_values: Record<string, DataValue>;
@@ -83,6 +88,8 @@ export interface DataValue {
   value: number | null;
   calculated_value: number | null;
   created_at: string;
+  manual_override?: number | null;
+  dhis2_value?: number | null;
 }
 
 export interface AssessmentPeriod {
