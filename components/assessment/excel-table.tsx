@@ -11,7 +11,7 @@ import { AssessmentData, Period } from '@/lib/assessment-service';
 interface ExcelTableProps {
   multiPeriodData: AssessmentData[] | null;
   selectedPeriods: Period[];
-  onCellEdit: (indicatorId: number, period: string, value: string) => void;
+  onCellEdit: (indicatorId: number, period: string, value: string) => Promise<void>;
   onScoreChange: (indicatorId: number, score: string) => void;
   onMilestoneScoreChange?: (objectiveId: number, score: string) => void;
   onRemarksChange?: (indicatorId: number, remarks: string) => void;
@@ -70,7 +70,7 @@ export default function ExcelTable({
               };
             });
             
-            // Change column (computed in page logic; fallback client derivation if absent)
+            // Change column (computed in page logic)
             const changeKey = `${indicator.id}_change`;
             newCellData[changeKey] = {
               value: indicator.score?.percent_change !== undefined && indicator.score?.percent_change !== null
@@ -135,7 +135,7 @@ export default function ExcelTable({
      }
    }, [multiPeriodData, selectedPeriods]);
 
-  const handleCellChange = (cellKey: string, value: string) => {
+  const handleCellChange = async (cellKey: string, value: string) => {
     setCellData(prev => ({
       ...prev,
       [cellKey]: { ...prev[cellKey], value }
@@ -151,7 +151,7 @@ export default function ExcelTable({
         onRemarksChange(parseInt(indicatorId), value);
       }
     } else if (selectedPeriods.some(p => (p.code || p.name) === column)) {
-      onCellEdit(parseInt(indicatorId), column, value);
+      await onCellEdit(parseInt(indicatorId), column, value);
     }
   };
 
@@ -315,6 +315,8 @@ export default function ExcelTable({
                       <td key={period.name} className="border border-gray-300 px-1 py-1">
                         {cell?.isEditable ? (
                           <Input
+                            type="number"
+                            step="any"
                             inputMode="decimal"
                             value={cell?.value || ''}
                             onChange={(e) => handleCellChange(cellKey, e.target.value)}
@@ -357,24 +359,34 @@ export default function ExcelTable({
                   
                   {/* Assessed score column */}
                   <td className="border border-gray-300 px-1 py-1">
-                    <Select
-                      value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
-                      onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
-                    >
-                                             <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500 font-bold" style={{ 
-                         backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
-                         color: 'black'
-                       }}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="-2">-2</SelectItem>
-                        <SelectItem value="-1">-1</SelectItem>
-                        <SelectItem value="0">0</SelectItem>
-                        <SelectItem value="1">1</SelectItem>
-                        <SelectItem value="2">2</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {indicator.score?.isLoading ? (
+                      <div className="h-6 text-xs text-center flex items-center justify-center" style={{ 
+                        backgroundColor: '#6c757d',
+                        color: 'white'
+                      }}>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                        Calculating...
+                      </div>
+                    ) : (
+                      <Select
+                        value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
+                        onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
+                      >
+                        <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500 font-bold" style={{ 
+                          backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
+                          color: 'black'
+                        }}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="-2">-2</SelectItem>
+                          <SelectItem value="-1">-1</SelectItem>
+                          <SelectItem value="0">0</SelectItem>
+                          <SelectItem value="1">1</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </td>
                   
                                      {/* Remarks column */}

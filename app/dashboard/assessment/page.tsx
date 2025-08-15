@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import PeriodSelectionModal from '@/components/modals/period-selection-modal';
 import { OpenAssessmentModal, NameAssessmentModal, ConfirmModal } from '@/components/modals/open-assessment-modal';
 import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-modal';
-import { assessmentService, AssessmentData, AssessmentPeriod, OrgUnit, Period, DHIS2OrgUnit } from '@/lib/assessment-service';
+import { assessmentService, AssessmentData, AssessmentPeriod, OrgUnit, Period, DHIS2OrgUnit, calculateRealTimeScore } from '@/lib/assessment-service';
 import ExcelTable from '@/components/assessment/excel-table';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -86,6 +86,8 @@ export default function AssessmentPage() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string>('');
 
   // Load assessment data on component mount
   useEffect(() => {
@@ -1174,8 +1176,8 @@ export default function AssessmentPage() {
     return `${state.selectedPeriods.length} periods selected`;
   };
 
-  // Real-time scoring calculation for manual entries - matches backend HolisticScoringService
-  const calculateManualScore = (indicator: any, currentValue: number, previousValue: number | null) => {
+  // Backend scoring logic (exact copy) for real-time accuracy
+  const calculateBackendScore = (indicator: any, currentValue: number, previousValue: number | null) => {
     // Step 1: Data Provided
     const dataProvided = currentValue !== null && currentValue !== undefined;
     if (!dataProvided) return { score: -2, percent_change: null, target_gap: null };
@@ -1183,107 +1185,157 @@ export default function AssessmentPage() {
     // Step 2: First Year
     const isFirstYear = previousValue === null || previousValue === undefined;
     
-    // Step 3: Target Achieved - use target format and operator logic
-    let targetAchieved = false;
-    const targetFormat = indicator.target_format || 'SINGLE';
-    const targetType = indicator.target_type || 'increase';
-    const targetOperator = indicator.target_operator || '>=';
-    
+    // Step 3: Target Achieved - EXACTLY matches backend logic
+    let targetAchieved = "No"; // Default
     if (currentValue !== null) {
+      const targetFormat = indicator.target_format || 'SINGLE';
+      const targetType = indicator.target_type || 'increase';
+      const targetOperator = indicator.target_operator || '>=';
+      
       if (targetFormat === 'RANGE') {
         // Range target: check if current value is within the range
         const lowerLimit = indicator.target_lower_limit;
         const upperLimit = indicator.target_upper_limit;
         if (lowerLimit !== null && upperLimit !== null) {
-          targetAchieved = currentValue >= lowerLimit && currentValue <= upperLimit;
+          targetAchieved = lowerLimit <= currentValue && currentValue <= upperLimit ? "Yes" : "No";
         } else {
           // Fallback to single target value
           const targetValue = Number(indicator.target_value);
           if (targetValue !== 0) {
-            targetAchieved = currentValue >= targetValue;
+            targetAchieved = currentValue >= targetValue ? "Yes" : "No";
           }
+        }
+      } else if (targetFormat === 'MINIMUM') {
+        // Minimum target: current value should be >= target_value
+        const targetValue = Number(indicator.target_value);
+        if (targetValue !== 0) {
+          targetAchieved = currentValue >= targetValue ? "Yes" : "No";
+        }
+      } else if (targetFormat === 'MAXIMUM') {
+        // Maximum target: current value should be <= target_value
+        const targetValue = Number(indicator.target_value);
+        if (targetValue !== 0) {
+          targetAchieved = currentValue <= targetValue ? "Yes" : "No";
         }
       } else {
         // Single value target: use the target_operator
         const targetValue = Number(indicator.target_value);
         if (targetValue !== 0) {
-          if (targetOperator === '>=') targetAchieved = currentValue >= targetValue;
-          else if (targetOperator === '>') targetAchieved = currentValue > targetValue;
-          else if (targetOperator === '<=') targetAchieved = currentValue <= targetValue;
-          else if (targetOperator === '<') targetAchieved = currentValue < targetValue;
-          else if (targetOperator === '=') targetAchieved = currentValue === targetValue;
+          if (targetOperator === '>=') targetAchieved = currentValue >= targetValue ? "Yes" : "No";
+          else if (targetOperator === '>') targetAchieved = currentValue > targetValue ? "Yes" : "No";
+          else if (targetOperator === '<=') targetAchieved = currentValue <= targetValue ? "Yes" : "No";
+          else if (targetOperator === '<') targetAchieved = currentValue < targetValue ? "Yes" : "No";
+          else if (targetOperator === '=') targetAchieved = currentValue === targetValue ? "Yes" : "No";
           else {
-            // Fallback to target_type logic
-            targetAchieved = targetType === 'increase' ? currentValue >= targetValue : currentValue <= targetValue;
+            // Default to >= for backward compatibility
+            targetAchieved = currentValue >= targetValue ? "Yes" : "No";
           }
         }
       }
     }
     
-    // Step 4: Performance Change
+    // Step 4: Performance Change - EXACTLY matches backend logic
     let percentChange = null;
     let changeCategory = null;
     if (currentValue !== null && previousValue !== null && previousValue !== 0) {
-      const rawChange = ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-      percentChange = Math.round(rawChange * 100) / 100; // Round to 2 decimal places
+      // Calculate raw percentage change (for display) - round to 2 decimal places
+      percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
       
-      // For negative indicators, invert the change for scoring
-      const performanceChange = targetType === 'decrease' ? -rawChange : rawChange;
+      // Calculate performance change (for scoring) - invert for negative indicators
+      const targetType = indicator.target_type || 'increase';
+      let performanceChange;
+      if (targetType === 'decrease') {
+        // For negative indicators (decrease is better), invert the change for scoring
+        performanceChange = -percentChange;
+      } else {
+        // For positive indicators (increase is better), use raw change
+        performanceChange = percentChange;
+      }
       
-      if (performanceChange <= -10) changeCategory = "<=-10%";
-      else if (performanceChange <= -5) changeCategory = "-10%<C<=-5%";
-      else if (performanceChange <= 5) changeCategory = "5%<=C>-5%";
-      else if (performanceChange > 5) changeCategory = ">5%";
+      // Categorize based on performance change (not raw change) - EXACTLY matches backend
+      if (performanceChange <= -10) {
+        changeCategory = "<=-10%";
+      } else if (performanceChange <= -5) {
+        changeCategory = "-10%<C<=-5%";
+      } else if (performanceChange <= 5) {
+        changeCategory = "5%<=C>-5%";
+      } else if (performanceChange > 5) {
+        changeCategory = ">5%";
+      }
     }
     
-    // Step 5: Target Gap - use the updated formulas
+    // Step 5: Target Gap - EXACTLY matches backend logic
     let targetGap = null;
     let gapCategory = null;
-    if (currentValue !== null && currentValue !== 0) {
-      if (targetFormat === 'RANGE' && indicator.target_upper_limit !== null) {
-        // For range indicators: (Target upper limit - Current Value) / Current Value * 100
-        targetGap = Math.round(((Number(indicator.target_upper_limit) - currentValue) / currentValue) * 100 * 100) / 100;
+    if (currentValue !== null) {
+      const targetFormat = indicator.target_format || 'SINGLE';
+      
+      if (targetFormat === 'RANGE') {
+        // Range target: calculate gap to the upper limit (as per backend)
+        const lowerLimit = indicator.target_lower_limit;
+        const upperLimit = indicator.target_upper_limit;
+        if (lowerLimit !== null && upperLimit !== null) {
+          // For range targets, calculate gap to the upper limit
+          targetGap = (currentValue - upperLimit) / upperLimit * 100;
+        } else {
+          // Fallback to single target value
+          const targetValue = Number(indicator.target_value);
+          if (targetValue !== 0) {
+            targetGap = (currentValue - targetValue) / targetValue * 100;
+          }
+        }
       } else {
-        // For non-range indicators
+        // Single value target
         const targetValue = Number(indicator.target_value);
         if (targetValue !== 0) {
-          if (targetType === 'increase') {
-            // For increase indicators: (Current Value - Target Value) / Target Value * 100
-            targetGap = Math.round(((currentValue - targetValue) / targetValue) * 100 * 100) / 100;
-          } else {
-            // For decrease indicators: (Target Value - Current Value) / Current Value * 100
-            targetGap = Math.round(((targetValue - currentValue) / currentValue) * 100 * 100) / 100;
+          // Calculate gap based on target_measurement_type
+          const targetMeasurementType = indicator.target_measurement_type || 'ABSOLUTE';
+          if (targetMeasurementType === 'PERCENTAGE' || targetMeasurementType === 'RATIO' || targetMeasurementType === 'ABSOLUTE') {
+            // For all types, calculate as percentage of target (matches backend)
+            targetGap = (currentValue - targetValue) / targetValue * 100;
           }
         }
       }
       
-      if (targetGap !== null) {
-        if (targetGap <= 10) gapCategory = "<=10%";
-        else if (targetGap <= 40) gapCategory = "10%<PT<=40%";
-        else gapCategory = ">40%";
-      }
+              // Categorize based on the signed target_gap - EXACTLY matches backend
+        if (targetGap !== null) {
+          // Round target gap to 2 decimal places for display consistency
+          targetGap = Math.round(targetGap * 100) / 100;
+          
+          if (targetGap <= 10) {
+            gapCategory = "<=10%";
+          } else if (10 < targetGap && targetGap <= 40) {
+            gapCategory = "10%<PT<=40%";
+          } else if (targetGap > 40) {
+            gapCategory = ">40%";
+          }
+        }
     }
     
-    // Step 6: Final Score Calculation - matches backend _calculate_final_score
+    // Step 6: Final Score Calculation - EXACTLY matches backend _calculate_final_score
     if (isFirstYear) {
       return { 
-        score: targetAchieved ? 1 : 0, 
+        score: targetAchieved === "Yes" ? 1 : 0, 
         percent_change: percentChange, 
         target_gap: targetGap 
       };
     }
     
-    if (targetAchieved) {
+    if (targetAchieved === "Yes") {
       // Target WAS achieved - check performance change
       if (changeCategory === ">5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "5%<=C>-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "-10%<C<=-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "<=-10%") return { score: 0, percent_change: percentChange, target_gap: targetGap };
-      return { score: 0, percent_change: percentChange, target_gap: targetGap };
+      // Target achieved but no change category (e.g., previous_value is 0)
+      // For decrease indicators, achieving target should score 2
+      // For increase indicators, achieving target should score 2
+      return { score: 2, percent_change: percentChange, target_gap: targetGap }; // Target achieved = good performance
     } else {
       // Target NOT achieved - check performance change
       if (changeCategory === ">5%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "5%<=C>-5%") {
+        // Stagnation - check how close to target
         if (gapCategory === "<=10%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
         if (gapCategory === "10%<PT<=40%") return { score: 0, percent_change: percentChange, target_gap: targetGap };
         if (gapCategory === ">40%") return { score: -1, percent_change: percentChange, target_gap: targetGap };
@@ -1296,10 +1348,11 @@ export default function AssessmentPage() {
     }
   };
 
-  // Handle manual entry changes
-  const handleManualEntryChange = (indicatorId: number, period: string, value: string) => {
+  // Handle manual entry changes with backend scoring
+  const handleManualEntryChange = async (indicatorId: number, period: string, value: string) => {
     const entryKey = `${indicatorId}_${period}`;
-    const newValue = value === '' ? null : Number(value);
+    // Handle float values properly - allow decimal numbers
+    const newValue = value === '' ? null : parseFloat(value);
     
     setManualEntries(prev => ({
       ...prev,
@@ -1310,16 +1363,31 @@ export default function AssessmentPage() {
     
     // Update the indicator data with new value and recalculate scores
     if (state.multiPeriodData && state.multiPeriodData.length > 0) {
+      // Get current and previous values for scoring (outside the map)
+      const selectedPeriodObj = state.selectedPeriods.find(p => p.name === period);
+      const periodCode = selectedPeriodObj?.code || period; // Fallback to name if code not found
+      const periods = state.selectedPeriods;
+      const currentPeriodIndex = periods.findIndex(p => p.name === period);
+      const currentValue = newValue;
+      
+      // Get previous value using periodCode as well
+      const previousPeriodObj = currentPeriodIndex > 0 ? periods[currentPeriodIndex - 1] : null;
+      const previousValue = previousPeriodObj ? 
+        (state.multiPeriodData[0]?.objectives.find(obj => 
+          obj.indicators.some(ind => ind.id === indicatorId)
+        )?.indicators.find(ind => ind.id === indicatorId)?.data_values?.[previousPeriodObj.code]?.value || 
+         state.multiPeriodData[0]?.objectives.find(obj => 
+          obj.indicators.some(ind => ind.id === indicatorId)
+        )?.indicators.find(ind => ind.id === indicatorId)?.data_values?.[previousPeriodObj.name]?.value || null) : null;
+      
+
+      
       const updatedData = state.multiPeriodData.map(periodData => ({
         ...periodData,
         objectives: periodData.objectives.map(obj => ({
           ...obj,
           indicators: obj.indicators.map(ind => {
             if (ind.id === indicatorId) {
-              // Find the period object to get its 'code'
-              const selectedPeriodObj = state.selectedPeriods.find(p => p.name === period);
-              const periodCode = selectedPeriodObj?.code || period; // Fallback to name if code not found
-              
               // Update data values using periodCode
               const updatedDataValues = {
                 ...ind.data_values,
@@ -1330,33 +1398,24 @@ export default function AssessmentPage() {
                 }
               };
               
-              // Get current and previous values for scoring
-              const periods = state.selectedPeriods;
-              const currentPeriodIndex = periods.findIndex(p => p.name === period);
-              const currentValue = newValue;
-              
-              // Get previous value using periodCode as well
-              const previousPeriodObj = currentPeriodIndex > 0 ? periods[currentPeriodIndex - 1] : null;
-              const previousValue = previousPeriodObj ? 
-                updatedDataValues[previousPeriodObj.code]?.value : null;
-              
-              // Calculate new score
-              const scoreResult = calculateManualScore(ind, currentValue || 0, previousValue);
+              // Set loading state for score
+              const loadingScore = {
+                ...ind.score,
+                score: null, // Will be calculated by backend
+                score_color: '#6c757d', // Gray for loading
+                score_label: 'Calculating...',
+                current_value: currentValue,
+                previous_value: previousValue,
+                target_gap: null,
+                percent_change: null,
+                is_manual_override: false,
+                isLoading: true
+              };
               
               return {
                 ...ind,
                 data_values: updatedDataValues,
-                score: {
-                  ...ind.score,
-                  score: scoreResult.score,
-                  percent_change: scoreResult.percent_change,
-                  target_gap: scoreResult.target_gap,
-                  current_value: currentValue,
-                  previous_value: previousValue,
-                  score_color: ind.score?.score_color || '#6c757d',
-                  score_label: ind.score?.score_label || 'No Data',
-                  is_manual_override: true
-                }
+                score: loadingScore
               };
             }
             return ind;
@@ -1364,10 +1423,135 @@ export default function AssessmentPage() {
         }))
       }));
       
+      // Update state immediately with loading
       setState(prev => ({
         ...prev,
         multiPeriodData: updatedData
       }));
+      
+      // Now calculate score using backend API
+      try {
+        const scoreResult = await calculateRealTimeScore(indicatorId, currentValue, previousValue);
+        
+        if (scoreResult.success && scoreResult.score_result) {
+          const backendScore = scoreResult.score_result;
+          
+          // Update state with backend score
+          setState(prev => ({
+            ...prev,
+            multiPeriodData: prev.multiPeriodData?.map(periodData => ({
+              ...periodData,
+              objectives: periodData.objectives.map(obj => ({
+                ...obj,
+                indicators: obj.indicators.map(ind => {
+                  if (ind.id === indicatorId) {
+                    return {
+                      ...ind,
+                      score: {
+                        ...ind.score,
+                        score: backendScore.score,
+                        percent_change: backendScore.percent_change,
+                        target_gap: backendScore.target_gap,
+                        current_value: currentValue,
+                        previous_value: previousValue,
+                        score_color: getScoreColor(backendScore.score),
+                        score_label: getScoreLabel(backendScore.score),
+                        is_manual_override: false,
+                        isLoading: false
+                      }
+                    };
+                  }
+                  return ind;
+                })
+              }))
+            })) || null
+          }));
+        } else {
+          console.error('Failed to calculate score:', scoreResult.error);
+          // Fallback to frontend calculation
+          const fallbackScore = calculateBackendScore(
+            state.multiPeriodData?.find(pd => pd.objectives.some(obj => 
+              obj.indicators.some(ind => ind.id === indicatorId)
+            ))?.objectives.find(obj => 
+              obj.indicators.some(ind => ind.id === indicatorId)
+            )?.indicators.find(ind => ind.id === indicatorId) || {},
+            currentValue || 0,
+            previousValue
+          );
+          
+          setState(prev => ({
+            ...prev,
+            multiPeriodData: prev.multiPeriodData?.map(periodData => ({
+              ...periodData,
+              objectives: periodData.objectives.map(obj => ({
+                ...obj,
+                indicators: obj.indicators.map(ind => {
+                  if (ind.id === indicatorId) {
+                    return {
+                      ...ind,
+                      score: {
+                        ...ind.score,
+                        score: fallbackScore.score,
+                        percent_change: fallbackScore.percent_change,
+                        target_gap: fallbackScore.target_gap,
+                        current_value: currentValue,
+                        previous_value: previousValue,
+                        score_color: getScoreColor(fallbackScore.score),
+                        score_label: getScoreLabel(fallbackScore.score),
+                        is_manual_override: false,
+                        isLoading: false
+                      }
+                    };
+                  }
+                  return ind;
+                })
+              }))
+            })) || null
+          }));
+        }
+      } catch (error) {
+        console.error('Error calculating score:', error);
+        // Fallback to frontend calculation on error
+        const fallbackScore = calculateBackendScore(
+          state.multiPeriodData?.find(pd => pd.objectives.some(obj => 
+            obj.indicators.some(ind => ind.id === indicatorId)
+          ))?.objectives.find(obj => 
+            obj.indicators.some(ind => ind.id === indicatorId)
+          )?.indicators.find(ind => ind.id === indicatorId) || {},
+          currentValue || 0,
+          previousValue
+        );
+        
+        setState(prev => ({
+          ...prev,
+          multiPeriodData: prev.multiPeriodData?.map(periodData => ({
+            ...periodData,
+            objectives: periodData.objectives.map(obj => ({
+              ...obj,
+              indicators: obj.indicators.map(ind => {
+                if (ind.id === indicatorId) {
+                  return {
+                    ...ind,
+                    score: {
+                      ...ind.score,
+                      score: fallbackScore.score,
+                      percent_change: fallbackScore.percent_change,
+                      target_gap: fallbackScore.target_gap,
+                      current_value: currentValue,
+                      previous_value: previousValue,
+                      score_color: getScoreColor(fallbackScore.score),
+                      score_label: getScoreLabel(fallbackScore.score),
+                      is_manual_override: false,
+                      isLoading: false
+                    }
+                  };
+                }
+                return ind;
+              })
+            }))
+          })) || null
+        }));
+      }
     }
   };
 
@@ -1840,34 +2024,59 @@ export default function AssessmentPage() {
                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
                   <div className="py-1">
                     <button
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isExporting}
                       onClick={async ()=>{
                         if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
                         try{
+                          setIsExporting(true);
+                          setExportStatus('Generating Excel file...');
+                          toast.info('Generating Excel export... This may take a few moments.');
+                          
                           const blob = await assessmentService.exportHolisticExcel({
                             org_unit_ids: state.selectedOrgUnits,
                             periods: state.selectedPeriods,
                             include_scores: true,
                           });
                           
+                          setExportStatus('Preparing download...');
+                          
                           // Create download link
                           const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement('a');
+                          const a = document.createElement('a');
                           a.href = url;
                           a.setAttribute('download', `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
-                            a.style.display = 'none';
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
+                          a.style.display = 'none';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
                           window.URL.revokeObjectURL(url);
-                            toast.success('Excel export generated');
+                          
+                          // Keep loading state for a moment to show download is complete
+                          setExportStatus('Download complete!');
+                          toast.success('Excel export generated successfully!');
+                          
+                          // Add a small delay to ensure download starts before clearing loading state
+                          setTimeout(() => {
+                            setIsExporting(false);
+                            setExportStatus('');
+                          }, 1500);
                         }catch(e){
                           console.error('Export Excel error', e);
                           toast.error('Failed to export Excel');
+                          setIsExporting(false);
+                          setExportStatus('');
                         }
                       }}
                     >
-                      Excel (.xlsx)
+                      {isExporting ? (
+                        <>
+                          <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
+                          {exportStatus || 'Generating...'}
+                        </>
+                      ) : (
+                        'Excel (.xlsx)'
+                      )}
                     </button>
                     <button
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

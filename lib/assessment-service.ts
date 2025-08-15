@@ -53,7 +53,7 @@ export interface IndicatorData {
 }
 
 export interface IndicatorScoreData {
-  score: number;
+  score: number | null;
   score_color: string;
   score_label: string;
   current_value: number | null;
@@ -66,6 +66,7 @@ export interface IndicatorScoreData {
   previous_meets_target?: boolean | null;
   is_manual_override: boolean;
   remarks?: string;
+  isLoading?: boolean;
 }
 
 export interface ObjectiveScoreData {
@@ -841,4 +842,66 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
  */
 export const periodsToDHIS2Format = (periods: Period[]): string[] => {
   return periods.map(period => period.code);
+};
+
+/**
+ * Calculate real-time score using backend HolisticScoringService
+ */
+export const calculateRealTimeScore = async (
+  indicatorId: number,
+  currentValue: number | null,
+  previousValue: number | null
+): Promise<{
+  success: boolean;
+  score_result?: {
+    score: number;
+    data_provided: string;
+    is_first_year: string;
+    target_achieved: string;
+    change_category: string | null;
+    gap_category: string | null;
+    percent_change: number | null;
+    target_gap: number | null;
+    current_value: number | null;
+    previous_value: number | null;
+    target_value: number | null;
+  };
+  error?: string;
+}> => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+    const response = await fetch(`${baseUrl}/assessments/manual-data-entry/calculate_real_time_score/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1] || '',
+      },
+      credentials: 'include', // Include cookies for session management
+      body: JSON.stringify({
+        indicator_id: indicatorId,
+        current_value: currentValue,
+        previous_value: previousValue
+      })
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Failed to calculate score'
+      };
+    }
+
+    return {
+      success: true,
+      score_result: data.score_result
+    };
+  } catch (error) {
+    console.error('Error calculating real-time score:', error);
+    return {
+      success: false,
+      error: 'Network error occurred'
+    };
+  }
 }; 
