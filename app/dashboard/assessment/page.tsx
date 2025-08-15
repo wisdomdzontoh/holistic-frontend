@@ -34,7 +34,8 @@ import {
   ChevronLeft,
   ChevronDown,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Calculator
 } from 'lucide-react';
 
 interface AssessmentState {
@@ -88,6 +89,8 @@ export default function AssessmentPage() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string>('');
+  const [pendingManualEntries, setPendingManualEntries] = useState<Record<string, number | null>>({});
+  const [isCalculatingScores, setIsCalculatingScores] = useState(false);
 
   // Load assessment data on component mount
   useEffect(() => {
@@ -1348,8 +1351,125 @@ export default function AssessmentPage() {
     }
   };
 
-  // Handle manual entry changes with backend scoring
-  const handleManualEntryChange = async (indicatorId: number, period: string, value: string) => {
+  // Calculate all scores in batch for manual entries
+  const calculateAllScores = async () => {
+    if (Object.keys(pendingManualEntries).length === 0) {
+      toast.info('No manual entries to calculate scores for');
+      return;
+    }
+
+    setIsCalculatingScores(true);
+    toast.info('Calculating scores for all manual entries...');
+
+    try {
+      // Group entries by indicator ID
+      const entriesByIndicator: Record<number, Array<{period: string, value: number | null}>> = {};
+      
+      Object.entries(pendingManualEntries).forEach(([key, value]) => {
+        const [indicatorId, period] = key.split('_');
+        const id = parseInt(indicatorId);
+        if (!entriesByIndicator[id]) {
+          entriesByIndicator[id] = [];
+        }
+        entriesByIndicator[id].push({ period, value });
+      });
+
+      // Calculate scores for each indicator
+      for (const [indicatorId, entries] of Object.entries(entriesByIndicator)) {
+        const id = parseInt(indicatorId);
+        
+        // Sort entries by period to get the most recent one
+        const sortedEntries = entries.sort((a, b) => {
+          const aIndex = state.selectedPeriods.findIndex(p => p.name === a.period);
+          const bIndex = state.selectedPeriods.findIndex(p => p.name === b.period);
+          return bIndex - aIndex; // Most recent first
+        });
+
+        const currentEntry = sortedEntries[0];
+        const currentValue = currentEntry.value;
+        
+        // Find previous value from the next entry or existing data
+        let previousValue = null;
+        if (sortedEntries.length > 1) {
+          previousValue = sortedEntries[1].value;
+        } else {
+          // Try to get from existing data
+          const currentPeriodIndex = state.selectedPeriods.findIndex(p => p.name === currentEntry.period);
+          const previousPeriodObj = currentPeriodIndex > 0 ? state.selectedPeriods[currentPeriodIndex - 1] : null;
+          
+          if (previousPeriodObj) {
+            const indicatorData = state.multiPeriodData?.[0]?.objectives.find(obj => 
+              obj.indicators.some(ind => ind.id === id)
+            )?.indicators.find(ind => ind.id === id);
+            
+            if (indicatorData) {
+              previousValue = indicatorData.data_values?.[previousPeriodObj.code]?.value || 
+                             indicatorData.data_values?.[previousPeriodObj.name]?.value ||
+                             indicatorData.data_values?.[previousPeriodObj.displayName]?.value ||
+                             null;
+            }
+          }
+        }
+
+        // Calculate score using backend API
+        const scoreResult = await calculateRealTimeScore(id, currentValue, previousValue);
+        
+        if (scoreResult.success && scoreResult.score_result) {
+          const backendScore = scoreResult.score_result;
+          
+          // Calculate percent change on frontend if backend doesn't provide it
+          let finalPercentChange = backendScore.percent_change;
+          if (finalPercentChange === null && currentValue !== null && previousValue !== null && previousValue !== 0) {
+            finalPercentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
+          }
+          
+          // Update state with calculated score
+          setState(prev => ({
+            ...prev,
+            multiPeriodData: prev.multiPeriodData?.map(periodData => ({
+              ...periodData,
+              objectives: periodData.objectives.map(obj => ({
+                ...obj,
+                indicators: obj.indicators.map(ind => {
+                  if (ind.id === id) {
+                    return {
+                      ...ind,
+                      score: {
+                        ...ind.score,
+                        score: backendScore.score,
+                        percent_change: finalPercentChange,
+                        target_gap: backendScore.target_gap,
+                        current_value: currentValue,
+                        previous_value: previousValue,
+                        score_color: getScoreColor(backendScore.score),
+                        score_label: getScoreLabel(backendScore.score),
+                        is_manual_override: false,
+                        isLoading: false
+                      }
+                    };
+                  }
+                  return ind;
+                })
+              }))
+            })) || null
+          }));
+        }
+      }
+
+      // Clear pending entries
+      setPendingManualEntries({});
+      toast.success('All scores calculated successfully!');
+      
+    } catch (error) {
+      console.error('Error calculating scores:', error);
+      toast.error('Failed to calculate some scores');
+    } finally {
+      setIsCalculatingScores(false);
+    }
+  };
+
+  // New simplified manual entry handler - no real-time scoring
+  const handleManualEntryChangeSimple = async (indicatorId: number, period: string, value: string) => {
     const entryKey = `${indicatorId}_${period}`;
     // Handle float values properly - allow decimal numbers
     const newValue = value === '' ? null : parseFloat(value);
@@ -1359,28 +1479,18 @@ export default function AssessmentPage() {
       [entryKey]: newValue
     }));
     
+    // Store in pending entries for batch calculation
+    setPendingManualEntries(prev => ({
+      ...prev,
+      [entryKey]: newValue
+    }));
+    
     setHasUnsavedChanges(true);
     
-    // Update the indicator data with new value and recalculate scores
+    // Update the indicator data with new value (no score calculation yet)
     if (state.multiPeriodData && state.multiPeriodData.length > 0) {
-      // Get current and previous values for scoring (outside the map)
       const selectedPeriodObj = state.selectedPeriods.find(p => p.name === period);
       const periodCode = selectedPeriodObj?.code || period; // Fallback to name if code not found
-      const periods = state.selectedPeriods;
-      const currentPeriodIndex = periods.findIndex(p => p.name === period);
-      const currentValue = newValue;
-      
-      // Get previous value using periodCode as well
-      const previousPeriodObj = currentPeriodIndex > 0 ? periods[currentPeriodIndex - 1] : null;
-      const previousValue = previousPeriodObj ? 
-        (state.multiPeriodData[0]?.objectives.find(obj => 
-          obj.indicators.some(ind => ind.id === indicatorId)
-        )?.indicators.find(ind => ind.id === indicatorId)?.data_values?.[previousPeriodObj.code]?.value || 
-         state.multiPeriodData[0]?.objectives.find(obj => 
-          obj.indicators.some(ind => ind.id === indicatorId)
-        )?.indicators.find(ind => ind.id === indicatorId)?.data_values?.[previousPeriodObj.name]?.value || null) : null;
-      
-
       
       const updatedData = state.multiPeriodData.map(periodData => ({
         ...periodData,
@@ -1398,24 +1508,9 @@ export default function AssessmentPage() {
                 }
               };
               
-              // Set loading state for score
-              const loadingScore = {
-                ...ind.score,
-                score: null, // Will be calculated by backend
-                score_color: '#6c757d', // Gray for loading
-                score_label: 'Calculating...',
-                current_value: currentValue,
-                previous_value: previousValue,
-                target_gap: null,
-                percent_change: null,
-                is_manual_override: false,
-                isLoading: true
-              };
-              
               return {
                 ...ind,
-                data_values: updatedDataValues,
-                score: loadingScore
+                data_values: updatedDataValues
               };
             }
             return ind;
@@ -1423,137 +1518,14 @@ export default function AssessmentPage() {
         }))
       }));
       
-      // Update state immediately with loading
+      // Update state with new data (no score calculation)
       setState(prev => ({
         ...prev,
         multiPeriodData: updatedData
       }));
-      
-      // Now calculate score using backend API
-      try {
-        const scoreResult = await calculateRealTimeScore(indicatorId, currentValue, previousValue);
-        
-        if (scoreResult.success && scoreResult.score_result) {
-          const backendScore = scoreResult.score_result;
-          
-          // Update state with backend score
-          setState(prev => ({
-            ...prev,
-            multiPeriodData: prev.multiPeriodData?.map(periodData => ({
-              ...periodData,
-              objectives: periodData.objectives.map(obj => ({
-                ...obj,
-                indicators: obj.indicators.map(ind => {
-                  if (ind.id === indicatorId) {
-                    return {
-                      ...ind,
-                      score: {
-                        ...ind.score,
-                        score: backendScore.score,
-                        percent_change: backendScore.percent_change,
-                        target_gap: backendScore.target_gap,
-                        current_value: currentValue,
-                        previous_value: previousValue,
-                        score_color: getScoreColor(backendScore.score),
-                        score_label: getScoreLabel(backendScore.score),
-                        is_manual_override: false,
-                        isLoading: false
-                      }
-                    };
-                  }
-                  return ind;
-                })
-              }))
-            })) || null
-          }));
-        } else {
-          console.error('Failed to calculate score:', scoreResult.error);
-          // Fallback to frontend calculation
-          const fallbackScore = calculateBackendScore(
-            state.multiPeriodData?.find(pd => pd.objectives.some(obj => 
-              obj.indicators.some(ind => ind.id === indicatorId)
-            ))?.objectives.find(obj => 
-              obj.indicators.some(ind => ind.id === indicatorId)
-            )?.indicators.find(ind => ind.id === indicatorId) || {},
-            currentValue || 0,
-            previousValue
-          );
-          
-          setState(prev => ({
-            ...prev,
-            multiPeriodData: prev.multiPeriodData?.map(periodData => ({
-              ...periodData,
-              objectives: periodData.objectives.map(obj => ({
-                ...obj,
-                indicators: obj.indicators.map(ind => {
-                  if (ind.id === indicatorId) {
-                    return {
-                      ...ind,
-                      score: {
-                        ...ind.score,
-                        score: fallbackScore.score,
-                        percent_change: fallbackScore.percent_change,
-                        target_gap: fallbackScore.target_gap,
-                        current_value: currentValue,
-                        previous_value: previousValue,
-                        score_color: getScoreColor(fallbackScore.score),
-                        score_label: getScoreLabel(fallbackScore.score),
-                        is_manual_override: false,
-                        isLoading: false
-                      }
-                    };
-                  }
-                  return ind;
-                })
-              }))
-            })) || null
-          }));
-        }
-      } catch (error) {
-        console.error('Error calculating score:', error);
-        // Fallback to frontend calculation on error
-        const fallbackScore = calculateBackendScore(
-          state.multiPeriodData?.find(pd => pd.objectives.some(obj => 
-            obj.indicators.some(ind => ind.id === indicatorId)
-          ))?.objectives.find(obj => 
-            obj.indicators.some(ind => ind.id === indicatorId)
-          )?.indicators.find(ind => ind.id === indicatorId) || {},
-          currentValue || 0,
-          previousValue
-        );
-        
-        setState(prev => ({
-          ...prev,
-          multiPeriodData: prev.multiPeriodData?.map(periodData => ({
-            ...periodData,
-            objectives: periodData.objectives.map(obj => ({
-              ...obj,
-              indicators: obj.indicators.map(ind => {
-                if (ind.id === indicatorId) {
-                  return {
-                    ...ind,
-                    score: {
-                      ...ind.score,
-                      score: fallbackScore.score,
-                      percent_change: fallbackScore.percent_change,
-                      target_gap: fallbackScore.target_gap,
-                      current_value: currentValue,
-                      previous_value: previousValue,
-                      score_color: getScoreColor(fallbackScore.score),
-                      score_label: getScoreLabel(fallbackScore.score),
-                      is_manual_override: false,
-                      isLoading: false
-                    }
-                  };
-                }
-                return ind;
-              })
-            }))
-          })) || null
-        }));
-      }
     }
   };
+
 
   // Save manual entries locally (they will be saved to backend when assessment is saved)
   // Handle actions that require checking for unsaved changes
@@ -2094,6 +2066,29 @@ export default function AssessmentPage() {
                 </div>
               </div>
               
+              {/* Calculate Scores Button */}
+              {Object.keys(pendingManualEntries).length > 0 && (
+                <Button 
+                  onClick={calculateAllScores}
+                  disabled={isCalculatingScores}
+                  size="sm"
+                  className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Calculate scores for all manual entries"
+                >
+                  {isCalculatingScores ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Calculating Scores...
+                    </>
+                  ) : (
+                    <>
+                      <Calculator className="h-4 w-4 mr-2" />
+                      Calculate Scores ({Object.keys(pendingManualEntries).length})
+                    </>
+                  )}
+                </Button>
+              )}
+              
               {/* Generate Report Button */}
               <Button 
                 onClick={handleGenerateReport}
@@ -2330,7 +2325,7 @@ export default function AssessmentPage() {
                     <ExcelTable
                       multiPeriodData={filtered}
                       selectedPeriods={state.selectedPeriods}
-                      onCellEdit={handleManualEntryChange}
+                      onCellEdit={handleManualEntryChangeSimple}
                       onScoreChange={handleScoreChange}
                       onMilestoneScoreChange={handleMilestoneScoreChange}
                       onRemarksChange={handleRemarksChange}
