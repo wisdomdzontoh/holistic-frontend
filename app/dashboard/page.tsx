@@ -216,7 +216,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">Total Indicators</p>
-                  <p className="text-3xl font-bold">{stats?.total_indicators || 156}</p>
+                  <p className="text-3xl font-bold">{stats?.total_indicators || 104}</p>
                 </div>
                 <div className="h-12 w-12 bg-emerald-100 rounded-lg flex items-center justify-center">
                   <CheckCircle className="h-6 w-6 text-emerald-600" />

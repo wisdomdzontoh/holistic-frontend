@@ -1256,7 +1256,12 @@ export default function AssessmentPage() {
           // Fallback to single target value
           const targetValue = Number(indicator.target_value);
           if (targetValue !== 0) {
-            targetAchieved = currentValue >= targetValue ? "Yes" : "No";
+            // Use target_type to determine achievement for fallback
+            if (targetType === 'decrease') {
+              targetAchieved = currentValue <= targetValue ? "Yes" : "No";
+            } else {
+              targetAchieved = currentValue >= targetValue ? "Yes" : "No";
+            }
           }
         }
       } else if (targetFormat === 'MINIMUM') {
@@ -1319,7 +1324,7 @@ export default function AssessmentPage() {
       } else if (performanceChange <= -5) {
         changeCategory = "-10%<C<=-5%";
       } else if (performanceChange <= 5) {
-        changeCategory = "5%<=C>-5%";
+        changeCategory = "-5%<C<=5%";  // Stagnation category
       } else if (performanceChange > 5) {
         changeCategory = ">5%";
       }
@@ -1343,7 +1348,14 @@ export default function AssessmentPage() {
           // Fallback to single target value
           const targetValue = Number(indicator.target_value);
           if (targetValue !== 0) {
-            targetGap = (currentValue - targetValue) / targetValue * 100;
+            // Calculate gap based on target type for fallback
+            if (targetType === 'decrease') {
+              // For decrease indicators: (target_value - current_value) / current_value * 100
+              targetGap = (targetValue - currentValue) / currentValue * 100;
+            } else {
+              // For increase indicators: (current_value - target_value) / target_value * 100
+              targetGap = (currentValue - targetValue) / targetValue * 100;
+            }
           }
         }
       } else {
@@ -1389,8 +1401,8 @@ export default function AssessmentPage() {
       // Target WAS achieved - check performance change
       if (changeCategory === ">5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "5%<=C>-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
-      if (changeCategory === "-10%<C<=-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
-      if (changeCategory === "<=-10%") return { score: 0, percent_change: percentChange, target_gap: targetGap };
+      if (changeCategory === "-10%<C<=-5%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
+      if (changeCategory === "<=-10%") return { score: -2, percent_change: percentChange, target_gap: targetGap };
       // Target achieved but no change category (e.g., previous_value is 0)
       // For decrease indicators, achieving target should score 2
       // For increase indicators, achieving target should score 2
@@ -1405,7 +1417,10 @@ export default function AssessmentPage() {
         if (gapCategory === ">40%") return { score: -1, percent_change: percentChange, target_gap: targetGap };
         return { score: 0, percent_change: percentChange, target_gap: targetGap };
       }
-      if (changeCategory === "-10%<C<=-5%" || changeCategory === "<=-10%") {
+      if (changeCategory === "-10%<C<=-5%") {
+        return { score: -1, percent_change: percentChange, target_gap: targetGap };
+      }
+      if (changeCategory === "<=-10%") {
         return { score: -1, percent_change: percentChange, target_gap: targetGap };
       }
       return { score: 0, percent_change: percentChange, target_gap: targetGap };
@@ -1978,72 +1993,72 @@ export default function AssessmentPage() {
 
         {/* Main Content - Restructured Layout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Error Display */}
-          {state.error && (
+        {/* Error Display */}
+        {state.error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center">
+            <div className="flex items-center">
                 <AlertCircle className="h-4 w-4 text-red-500 mr-2" />
                 <span className="text-red-700 text-sm">{state.error}</span>
-              </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Progress Display */}
-          {state.syncProgress && (
+        {/* Progress Display */}
+        {state.syncProgress && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center">
                   <RefreshCw className="h-4 w-4 text-blue-500 mr-2 animate-spin" />
                   <span className="text-blue-700 font-medium text-sm">{state.syncProgress.message}</span>
-                </div>
+              </div>
                 <span className="text-blue-600 text-xs">
-                  {state.syncProgress.current} / {state.syncProgress.total}
-                </span>
-              </div>
-              <div className="w-full bg-blue-200 rounded-full h-1.5">
-                <div 
-                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-                  style={{ width: `${(state.syncProgress.current / state.syncProgress.total) * 100}%` }}
-                ></div>
-              </div>
+                {state.syncProgress.current} / {state.syncProgress.total}
+              </span>
             </div>
-          )}
+              <div className="w-full bg-blue-200 rounded-full h-1.5">
+              <div 
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${(state.syncProgress.current / state.syncProgress.total) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
 
           {/* Compact Action Bar */}
           <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mb-4">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-3 lg:space-y-0">
               {/* Left side: Status and indicators */}
               <div className="flex items-center space-x-4">
-                {/* Sector score badge */}
-                {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector_score && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+              {/* Sector score badge */}
+              {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector_score && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                       <div className="flex items-center space-x-2">
                         <span className="text-sm font-medium text-gray-700">Sector Score:</span>
-                        <span
+                    <span
                           className="px-2 py-1 rounded-full text-white text-sm font-semibold shadow-sm"
-                          style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
-                        >
+                      style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
+                    >
                           {typeof state.multiPeriodData[0].sector_score.overall_score === 'number' ? state.multiPeriodData[0].sector_score.overall_score.toFixed(2) : '-'}
-                        </span>
+                    </span>
                       </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <div className="text-xs">
-                        {state.multiPeriodData[0].sector_score.score_label}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                
-                {/* Edit mode indicator */}
-                {state.currentAssessmentId && (
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-xs">
+                      {state.multiPeriodData[0].sector_score.score_label}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              
+              {/* Edit mode indicator */}
+              {state.currentAssessmentId && (
                   <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Editing Assessment
-                  </Badge>
-                )}
-
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Editing Assessment
+                </Badge>
+              )}
+              
                 {/* Manual Entries Save Button */}
                 {hasUnsavedChanges && (
                   <div className="flex items-center space-x-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -2111,51 +2126,51 @@ export default function AssessmentPage() {
                 </Button>
 
                 {/* File Menu */}
-                <div className="relative group">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
+              <div className="relative group">
+                <Button 
+                  variant="outline" 
+                  size="sm"
                     className="border-gray-300 text-gray-700 hover:bg-gray-50 text-xs"
-                  >
+                >
                     <FileText className="h-3 w-3 mr-1" />
-                    File
-                    <ChevronDown className="h-3 w-3 ml-1" />
-                  </Button>
+                  File
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
                   <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                    <div className="py-1">
+                  <div className="py-1">
                       <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100" onClick={()=>setIsOpenModal(true)}>
-                        Open Assessment
-                      </button>
-                      <button 
+                      Open Assessment
+                    </button>
+                    <button 
                         className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
-                        onClick={handleSaveAssessment}
-                        disabled={!state.multiPeriodData || state.multiPeriodData.length === 0}
-                      >
-                        {state.currentAssessmentId ? 'Update Assessment' : 'Save Assessment'}
-                      </button>
-                    </div>
+                       onClick={handleSaveAssessment}
+                      disabled={!state.multiPeriodData || state.multiPeriodData.length === 0}
+                    >
+                      {state.currentAssessmentId ? 'Update Assessment' : 'Save Assessment'}
+                    </button>
                   </div>
                 </div>
-                
+              </div>
+              
                 {/* Export Menu */}
-                <div className="relative group">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
+              <div className="relative group">
+                <Button 
+                  variant="outline" 
+                  size="sm"
                     className="border-gray-300 text-gray-700 hover:bg-gray-50 text-xs"
-                  >
+                >
                     <Download className="h-3 w-3 mr-1" />
                     Export
-                    <ChevronDown className="h-3 w-3 ml-1" />
-                  </Button>
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
                   <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                    <div className="py-1">
-                      <button
+                  <div className="py-1">
+                    <button
                         className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={isExporting}
-                        onClick={async ()=>{
-                          if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
-                          try{
+                      onClick={async ()=>{
+                        if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
+                        try{
                             setIsExporting(true);
                             setExportStatus('Generating Excel file...');
                             toast.info('Generating Excel export... This may take a few moments.');
@@ -2204,9 +2219,9 @@ export default function AssessmentPage() {
                             console.log('Pre-calculated scores being sent to backend:', preCalculatedScores);
                             
                             const blob = await assessmentService.exportHolisticExcel({
-                              org_unit_ids: state.selectedOrgUnits,
-                              periods: state.selectedPeriods,
-                              include_scores: true,
+                            org_unit_ids: state.selectedOrgUnits,
+                            periods: state.selectedPeriods,
+                            include_scores: true,
                               manual_entries: manualEntriesData, // Include manual entries
                               pre_calculated_scores: preCalculatedScores, // Include pre-calculated scores
                             });
@@ -2233,9 +2248,9 @@ export default function AssessmentPage() {
                               setIsExporting(false);
                               setExportStatus('');
                             }, 1500);
-                          }catch(e){
-                            console.error('Export Excel error', e);
-                            toast.error('Failed to export Excel');
+                        }catch(e){
+                          console.error('Export Excel error', e);
+                          toast.error('Failed to export Excel');
                             setIsExporting(false);
                             setExportStatus('');
                           }
@@ -2249,26 +2264,26 @@ export default function AssessmentPage() {
                         ) : (
                           'Excel (.xlsx)'
                         )}
-                      </button>
-                      <button
+                    </button>
+                    <button
                         className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
-                        onClick={exportToCSV}
-                      >
-                        CSV (.csv)
-                      </button>
-                      <button
+                      onClick={exportToCSV}
+                    >
+                      CSV (.csv)
+                    </button>
+                    <button
                         className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
-                        onClick={exportToPDF}
-                      >
-                        PDF (print)
-                      </button>
+                      onClick={exportToPDF}
+                    >
+                      PDF (print)
+                    </button>
                     </div>
                   </div>
                 </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-
+              
           {/* Configuration Collapsible Section */}
           <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mb-4">
             <button
@@ -2281,7 +2296,7 @@ export default function AssessmentPage() {
                   Assessment Configuration
                 </h3>
                 <ChevronDown className={`h-4 w-4 text-white transition-transform ${state.configExpanded ? 'rotate-180' : ''}`} />
-              </div>
+            </div>
             </button>
             
             {state.configExpanded && (
@@ -2294,41 +2309,41 @@ export default function AssessmentPage() {
                       Organization Units
                     </label>
                     <div className="space-y-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setIsOrgUnitModalOpen(true)}
-                        disabled={state.loading}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsOrgUnitModalOpen(true)}
+                  disabled={state.loading}
                         className="w-full justify-start text-xs"
-                      >
+                >
                         <Plus className="h-3 w-3 mr-1" />
                         Select Organization Units
-                      </Button>
+                </Button>
                       <div className="flex flex-wrap gap-1">
-                        {state.selectedOrgUnits.length ? (
-                          state.selectedOrgUnits.map((orgUnitId, index) => {
-                            const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
-                            return (
+                  {state.selectedOrgUnits.length ? (
+                    state.selectedOrgUnits.map((orgUnitId, index) => {
+                      const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
+                      return (
                               <Badge key={orgUnitId} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                                {orgUnit?.displayName || orgUnitId}
-                                <button
-                                  onClick={() => setState(prev => ({
-                                    ...prev,
-                                    selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
-                                  }))}
-                                  className="ml-1 hover:text-blue-800"
-                                >
-                                  ×
-                                </button>
-                              </Badge>
-                            );
-                          })
-                        ) : (
+                          {orgUnit?.displayName || orgUnitId}
+                          <button
+                            onClick={() => setState(prev => ({
+                              ...prev,
+                              selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
+                            }))}
+                            className="ml-1 hover:text-blue-800"
+                          >
+                            ×
+                          </button>
+                        </Badge>
+                      );
+                    })
+                  ) : (
                           <span className="text-xs text-gray-400 italic">No units selected</span>
-                        )}
+                  )}
                       </div>
-                    </div>
-                  </div>
+                </div>
+              </div>
 
                   {/* Assessment Periods */}
                   <div className="space-y-2">
@@ -2337,38 +2352,38 @@ export default function AssessmentPage() {
                       Assessment Periods
                     </label>
                     <div className="space-y-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setIsPeriodModalOpen(true)}
-                        disabled={state.loading}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPeriodModalOpen(true)}
+                  disabled={state.loading}
                         className="w-full justify-start text-xs"
-                      >
+                >
                         <Plus className="h-3 w-3 mr-1" />
-                        Select Periods
-                      </Button>
+                  Select Periods
+                </Button>
                       <div className="flex flex-wrap gap-1">
-                        {state.selectedPeriods.length ? (
-                          state.selectedPeriods.map((period, index) => (
+                  {state.selectedPeriods.length ? (
+                    state.selectedPeriods.map((period, index) => (
                             <Badge key={period.id} variant="secondary" className="bg-green-50 text-green-700 border-green-200 text-xs">
-                              {period.displayName}
-                              <button
-                                onClick={() => setState(prev => ({
-                                  ...prev,
-                                  selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
-                                }))}
-                                className="ml-1 hover:text-green-800"
-                              >
-                                ×
-                              </button>
-                            </Badge>
-                          ))
-                        ) : (
+                        {period.displayName}
+                        <button
+                          onClick={() => setState(prev => ({
+                            ...prev,
+                            selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
+                          }))}
+                          className="ml-1 hover:text-green-800"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))
+                  ) : (
                           <span className="text-xs text-gray-400 italic">No periods selected</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  )}
+                </div>
+              </div>
+              </div>
 
                   {/* Data Source Filter */}
                   <div className="space-y-2">
@@ -2401,118 +2416,118 @@ export default function AssessmentPage() {
                       >
                         Manual Only
                       </Button>
-                    </div>
-                  </div>
-                </div>
+              </div>
+            </div>
+          </div>
               </div>
             )}
-          </div>
+        </div>
 
           {/* Enhanced Excel-like Assessment Table - Full Width */}
           <Card className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200 py-3">
-              <div className="flex items-center justify-between">
-                <div>
+            <div className="flex items-center justify-between">
+              <div>
                   <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
                     <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
                     Assessment Report
                   </CardTitle>
                   <CardDescription className="text-xs text-gray-600 mt-1">
                     Performance indicators with trend analysis, real-time scoring, and manual data entry
-                  </CardDescription>
-                </div>
+                </CardDescription>
+              </div>
                 <div className="hidden md:flex items-center gap-4 text-xs">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                     <span className="text-gray-500 font-medium">Organization:</span>
-                    {state.selectedOrgUnits.length ? (
+                  {state.selectedOrgUnits.length ? (
                       <OrgUnitDisplay orgUnitId={state.selectedOrgUnits[0]} orgUnitsFlat={state.dhis2OrgUnitsFlat} />
-                    ) : (
+                  ) : (
                       <span className="text-gray-400 italic">None selected</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
                     <span className="text-gray-500 font-medium">Periods:</span>
-                    {state.selectedPeriods.length ? (
+                  {state.selectedPeriods.length ? (
                       <div className="flex items-center gap-1 flex-wrap max-w-[300px]">
                         {state.selectedPeriods.slice(0,2).map(p=> (
                           <span key={p.id} className="px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">{p.displayName}</span>
                         ))}
                         {state.selectedPeriods.length > 2 && (
                           <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200 font-medium">+{state.selectedPeriods.length-2} more</span>
-                        )}
-                      </div>
-                    ) : (
+                      )}
+                    </div>
+                  ) : (
                       <span className="text-gray-400 italic">None selected</span>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="bg-white p-0">
-              {state.loading ? (
+            </div>
+          </CardHeader>
+          <CardContent className="bg-white p-0">
+            {state.loading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
                     <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-blue-600" />
                     <span className="text-gray-600 font-medium">Loading assessment data...</span>
                   </div>
-                </div>
-              ) : state.isGenerating ? (
+              </div>
+            ) : state.isGenerating ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
                     <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-blue-600" />
                     <div className="text-gray-900 font-medium mb-2">Generating assessment report...</div>
-                    {state.syncProgress && (
+                  {state.syncProgress && (
                       <div className="text-sm text-gray-500">
-                        {state.syncProgress.message} ({state.syncProgress.current}/{state.syncProgress.total})
-                      </div>
-                    )}
-                  </div>
+                      {state.syncProgress.message} ({state.syncProgress.current}/{state.syncProgress.total})
+                    </div>
+                  )}
                 </div>
-              ) : state.multiPeriodData ? (
-                <div className="p-4">
-                  {(() => {
-                    const filtered = state.multiPeriodData.map(pd => ({
-                      ...pd,
-                      objectives: pd.objectives.map(obj => ({
-                        ...obj,
-                        indicators: obj.indicators.filter((ind:any) => {
-                          if (indicatorSourceFilter==='all') return true;
-                          const isDHIS2 = Boolean(ind.dhis2_uid);
-                          return indicatorSourceFilter==='dhis2' ? isDHIS2 : !isDHIS2;
-                        })
-                      }))
-                    }));
-                    return (
-                      <ExcelTable
-                        multiPeriodData={filtered}
-                        selectedPeriods={state.selectedPeriods}
+              </div>
+            ) : state.multiPeriodData ? (
+              <div className="p-4">
+                {(() => {
+                  const filtered = state.multiPeriodData.map(pd => ({
+                    ...pd,
+                    objectives: pd.objectives.map(obj => ({
+                      ...obj,
+                      indicators: obj.indicators.filter((ind:any) => {
+                        if (indicatorSourceFilter==='all') return true;
+                        const isDHIS2 = Boolean(ind.dhis2_uid);
+                        return indicatorSourceFilter==='dhis2' ? isDHIS2 : !isDHIS2;
+                      })
+                    }))
+                  }));
+                  return (
+                    <ExcelTable
+                      multiPeriodData={filtered}
+                      selectedPeriods={state.selectedPeriods}
                         onCellEdit={handleManualEntryChangeSimple}
-                        onScoreChange={handleScoreChange}
-                        onMilestoneScoreChange={handleMilestoneScoreChange}
+                      onScoreChange={handleScoreChange}
+                      onMilestoneScoreChange={handleMilestoneScoreChange}
                         onRemarksChange={handleRemarksChange}
                         onMilestoneRemarksChange={handleMilestoneRemarksChange}
-                      />
-                    );
-                  })()}
-                </div>
-              ) : (
+                    />
+                  );
+                })()}
+              </div>
+            ) : (
                 <div className="text-center py-16 text-gray-500">
                   <BarChart3 className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No Assessment Data</h3>
                   <p className="text-gray-600">Generate a report to view comprehensive health system performance data.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         </div>
 
         {/* Modals */}
-        <PeriodSelectionModal
-          isOpen={isPeriodModalOpen}
-          onClose={() => setIsPeriodModalOpen(false)}
-          onPeriodsSelected={handlePeriodSelection}
-          selectedPeriods={state.selectedPeriods}
-        />
+                  <PeriodSelectionModal
+            isOpen={isPeriodModalOpen}
+            onClose={() => setIsPeriodModalOpen(false)}
+            onPeriodsSelected={handlePeriodSelection}
+            selectedPeriods={state.selectedPeriods}
+          />
 
         <OrgUnitSelectionModal
           isOpen={isOrgUnitModalOpen}
