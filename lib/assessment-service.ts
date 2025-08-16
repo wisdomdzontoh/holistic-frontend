@@ -201,6 +201,8 @@ class AssessmentService {
     org_unit_ids: string[];
     periods: Period[];
     include_scores?: boolean;
+    manual_entries?: Record<number, Record<string, number | null>>;
+    pre_calculated_scores?: Record<number, any>;
   }): Promise<Blob>{
     const formattedPeriods = params.periods.map(period => ({
       name: period.name,
@@ -220,6 +222,8 @@ class AssessmentService {
         org_unit_ids: params.org_unit_ids,
         periods: formattedPeriods,
         include_scores: params.include_scores ?? true,
+        manual_entries: params.manual_entries || {},
+        pre_calculated_scores: params.pre_calculated_scores || {},
       }),
     });
     
@@ -354,6 +358,16 @@ class AssessmentService {
     } catch (error) {
       console.error('Error fetching DHIS2 org unit children:', error);
       return [];
+    }
+  }
+
+  async getDHIS2OrgUnitById(orgUnitId: string): Promise<DHIS2OrgUnit | null> {
+    try {
+      const response = await this.makeRequest(`/dhis2-auth/org-units/${orgUnitId}/`);
+      return response.org_unit || null;
+    } catch (error) {
+      console.error('Error fetching DHIS2 org unit by ID:', error);
+      return null;
     }
   }
 

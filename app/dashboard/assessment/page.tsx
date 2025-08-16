@@ -38,6 +38,55 @@ import {
   Calculator
 } from 'lucide-react';
 
+// Component to display organization unit name with fallback to backend fetch
+const OrgUnitDisplay = ({ orgUnitId, orgUnitsFlat }: { orgUnitId: string; orgUnitsFlat: DHIS2OrgUnit[] }) => {
+  const [orgUnitName, setOrgUnitName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchOrgUnitName = async () => {
+      // First try to find in cache
+      const orgUnit = orgUnitsFlat.find(ou => ou.id === orgUnitId);
+      if (orgUnit) {
+        setOrgUnitName(orgUnit.displayName || orgUnit.name || orgUnit.id);
+        return;
+      }
+
+      // If not found in cache, fetch from backend
+      setIsLoading(true);
+      try {
+        const orgUnitData = await assessmentService.getDHIS2OrgUnitById(orgUnitId);
+        if (orgUnitData) {
+          setOrgUnitName(orgUnitData.displayName || orgUnitData.name || orgUnitData.id);
+        } else {
+          setOrgUnitName(`Organization (${orgUnitId.substring(0, 8)}...)`);
+        }
+      } catch (error) {
+        console.error('Error fetching org unit name:', error);
+        setOrgUnitName(`Organization (${orgUnitId.substring(0, 8)}...)`);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOrgUnitName();
+  }, [orgUnitId, orgUnitsFlat]);
+
+  if (isLoading) {
+    return (
+      <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+        Loading...
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+      {orgUnitName || `Organization (${orgUnitId.substring(0, 8)}...)`}
+    </span>
+  );
+};
+
 interface AssessmentState {
   loading: boolean;
   error: string | null;
@@ -2111,10 +2160,55 @@ export default function AssessmentPage() {
                             setExportStatus('Generating Excel file...');
                             toast.info('Generating Excel export... This may take a few moments.');
                             
+                            // Prepare manual entries data and pre-calculated scores for export
+                            const manualEntriesData: Record<number, Record<string, number | null>> = {};
+                            const preCalculatedScores: Record<number, any> = {};
+                            
+                            if (state.multiPeriodData && state.multiPeriodData.length > 0) {
+                              state.multiPeriodData[0].objectives.forEach(objective => {
+                                objective.indicators.forEach(indicator => {
+                                  if (indicator.data_values) {
+                                    Object.entries(indicator.data_values).forEach(([period, dataValue]) => {
+                                      // Check if this is a manual entry (has manual_override and it's not null)
+                                      if (dataValue && dataValue.manual_override !== undefined && dataValue.manual_override !== null) {
+                                        if (!manualEntriesData[indicator.id]) {
+                                          manualEntriesData[indicator.id] = {};
+                                        }
+                                        // Use the period as the key (this could be period name or code)
+                                        manualEntriesData[indicator.id][period] = dataValue.manual_override;
+                                        console.log(`Found manual entry for indicator ${indicator.id}, period ${period}: ${dataValue.manual_override}`);
+                                      }
+                                    });
+                                  }
+                                  
+                                  // Include pre-calculated scores for this indicator
+                                  if (indicator.score) {
+                                    preCalculatedScores[indicator.id] = {
+                                      score: indicator.score.score,
+                                      percent_change: indicator.score.percent_change,
+                                      target_gap: indicator.score.target_gap,
+                                      current_value: indicator.score.current_value,
+                                      previous_value: indicator.score.previous_value,
+                                      change_category: indicator.score.change_category,
+                                      gap_category: indicator.score.gap_category,
+                                      score_color: indicator.score.score_color,
+                                      score_label: indicator.score.score_label,
+                                      is_manual_override: indicator.score.is_manual_override || false
+                                    };
+                                    console.log(`Including pre-calculated scores for indicator ${indicator.id}:`, preCalculatedScores[indicator.id]);
+                                  }
+                                });
+                              });
+                            }
+                            console.log('Manual entries being sent to backend:', manualEntriesData);
+                            console.log('Pre-calculated scores being sent to backend:', preCalculatedScores);
+                            
                             const blob = await assessmentService.exportHolisticExcel({
                               org_unit_ids: state.selectedOrgUnits,
                               periods: state.selectedPeriods,
                               include_scores: true,
+                              manual_entries: manualEntriesData, // Include manual entries
+                              pre_calculated_scores: preCalculatedScores, // Include pre-calculated scores
                             });
                             
                             setExportStatus('Preparing download...');
@@ -2331,9 +2425,7 @@ export default function AssessmentPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-gray-500 font-medium">Organization:</span>
                     {state.selectedOrgUnits.length ? (
-                      <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                        {state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || state.selectedOrgUnits[0]}
-                      </span>
+                      <OrgUnitDisplay orgUnitId={state.selectedOrgUnits[0]} orgUnitsFlat={state.dhis2OrgUnitsFlat} />
                     ) : (
                       <span className="text-gray-400 italic">None selected</span>
                     )}
