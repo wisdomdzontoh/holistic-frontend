@@ -37,7 +37,7 @@ export default function ExcelTable({
 }: ExcelTableProps) {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
 
-  // Initialize cell data when multiPeriodData changes
+  // Initialize cell data when multiPeriodData changes or when forced to refresh
   useEffect(() => {
     if (multiPeriodData && multiPeriodData.length > 0) {
       const newCellData: Record<string, CellData> = {};
@@ -45,19 +45,13 @@ export default function ExcelTable({
       multiPeriodData.forEach((periodData) => {
         periodData.objectives.forEach((objective) => {
           
-          objective.indicators.forEach((indicator) => {
-            // Debug: Log indicator data_values
-            console.log(`ExcelTable: Indicator ${indicator.id} (${indicator.name}) data_values:`, indicator.data_values);
-            
-            // Performance trend columns (period data)
-            selectedPeriods.forEach((period) => {
-              // Use period.code instead of period.name to match backend data keys
-              const periodKey = period.code || period.name;
-              const cellKey = `${indicator.id}_${periodKey}`;
-              const dataValue = indicator.data_values && indicator.data_values[periodKey];
-              
-              // Debug: Log individual period data
-              console.log(`ExcelTable: Period ${periodKey} data for indicator ${indicator.id}:`, dataValue);
+                     objective.indicators.forEach((indicator) => {
+             // Performance trend columns (period data)
+             selectedPeriods.forEach((period) => {
+               // Use period.code instead of period.name to match backend data keys
+               const periodKey = period.code || period.name;
+               const cellKey = `${indicator.id}_${periodKey}`;
+               const dataValue = indicator.data_values && indicator.data_values[periodKey];
               
               // Check if this is DHIS2 data (has dhis2_uid) or manual data
               const isDHIS2Data = !!indicator.dhis2_uid;
@@ -70,12 +64,53 @@ export default function ExcelTable({
               };
             });
             
-            // Change column (computed in page logic)
-            const changeKey = `${indicator.id}_change`;
+                                      // Change column (computed in page logic)
+             const changeKey = `${indicator.id}_change`;
+             let changeDisplay = '';
+             
+             // Debug: Log the indicator score data for Change column
+             console.log(`Change column for indicator ${indicator.id}:`, {
+               percent_change: indicator.score?.percent_change,
+               target_type: indicator.target_type,
+               score: indicator.score?.score
+             });
+             
+             if (indicator.score?.percent_change !== undefined && indicator.score?.percent_change !== null) {
+               const percentChange = indicator.score.percent_change;
+               const isDecreaseIndicator = indicator.target_type === 'decrease';
+               
+               // For decrease indicators, add visual indicator
+               if (isDecreaseIndicator) {
+                 if (percentChange > 0) {
+                   changeDisplay = `+${percentChange}% (↗️ Bad)`; // Increased when should decrease
+                 } else if (percentChange < 0) {
+                   changeDisplay = `${percentChange}% (↘️ Good)`; // Decreased when should decrease
+                 } else {
+                   changeDisplay = `${percentChange}% (→ Stable)`;
+                 }
+               } else {
+                 // For increase indicators, standard display
+                 if (percentChange > 0) {
+                   changeDisplay = `+${percentChange}% (↗️ Good)`; // Increased when should increase
+                 } else if (percentChange < 0) {
+                   changeDisplay = `${percentChange}% (↘️ Bad)`; // Decreased when should increase
+                 } else {
+                   changeDisplay = `${percentChange}% (→ Stable)`;
+                 }
+               }
+             } else {
+               // Handle cases where percent_change is null (first year, no data, etc.)
+               if (indicator.score?.score === -2) {
+                 changeDisplay = 'No Data';
+               } else if (indicator.score?.is_first_year === "Yes" || indicator.score?.is_first_year === true) {
+                 changeDisplay = 'First Year';
+               } else {
+                 changeDisplay = 'N/A';
+               }
+             }
+            
             newCellData[changeKey] = {
-              value: indicator.score?.percent_change !== undefined && indicator.score?.percent_change !== null
-                ? `${indicator.score?.percent_change}%`
-                : '',
+              value: changeDisplay,
               isEditable: false,
               isDHIS2Data: false
             };

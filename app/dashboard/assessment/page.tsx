@@ -57,6 +57,7 @@ interface AssessmentState {
   } | null;
   currentAssessmentId?: string; // Track if we're editing an existing assessment
   currentAssessmentName?: string; // Track the current assessment name
+  configExpanded: boolean;
 }
 
 export default function AssessmentPage() {
@@ -73,6 +74,7 @@ export default function AssessmentPage() {
     isGenerating: false,
     isSyncing: false,
     syncProgress: null,
+    configExpanded: false,
   });
   
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
@@ -1241,19 +1243,26 @@ export default function AssessmentPage() {
     let percentChange = null;
     let changeCategory = null;
     if (currentValue !== null && previousValue !== null && previousValue !== 0) {
-      // Calculate raw percentage change (for display) - round to 2 decimal places
-      percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
-      
-      // Calculate performance change (for scoring) - invert for negative indicators
+      // Calculate raw percentage change based on indicator type
       const targetType = indicator.target_type || 'increase';
-      let performanceChange;
-      if (targetType === 'decrease') {
-        // For negative indicators (decrease is better), invert the change for scoring
-        performanceChange = -percentChange;
+      const targetFormat = indicator.target_format || 'SINGLE';
+      
+      if (targetFormat === 'RANGE') {
+        // For range indicators, always use standard formula regardless of target_type
+        percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
       } else {
-        // For positive indicators (increase is better), use raw change
-        performanceChange = percentChange;
+        // For non-range indicators, use target_type specific formula
+        if (targetType === 'decrease') {
+          // For decrease indicators: (previous_value - current_value) / abs(current_value) * 100
+          percentChange = Math.round(((previousValue - currentValue) / Math.abs(currentValue)) * 100 * 100) / 100;
+        } else {
+          // For increase indicators: (current_value - previous_value) / abs(previous_value) * 100
+          percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
+        }
       }
+      
+      // Calculate performance change (for scoring) - use raw percentChange for all types
+      const performanceChange = percentChange;
       
       // Categorize based on performance change (not raw change) - EXACTLY matches backend
       if (performanceChange <= -10) {
@@ -1272,6 +1281,7 @@ export default function AssessmentPage() {
     let gapCategory = null;
     if (currentValue !== null) {
       const targetFormat = indicator.target_format || 'SINGLE';
+      const targetType = indicator.target_type || 'increase';
       
       if (targetFormat === 'RANGE') {
         // Range target: calculate gap to the upper limit (as per backend)
@@ -1291,10 +1301,12 @@ export default function AssessmentPage() {
         // Single value target
         const targetValue = Number(indicator.target_value);
         if (targetValue !== 0) {
-          // Calculate gap based on target_measurement_type
-          const targetMeasurementType = indicator.target_measurement_type || 'ABSOLUTE';
-          if (targetMeasurementType === 'PERCENTAGE' || targetMeasurementType === 'RATIO' || targetMeasurementType === 'ABSOLUTE') {
-            // For all types, calculate as percentage of target (matches backend)
+          // Calculate gap based on target type
+          if (targetType === 'decrease') {
+            // For decrease indicators: (target_value - current_value) / current_value * 100
+            targetGap = (targetValue - currentValue) / currentValue * 100;
+          } else {
+            // For increase indicators: (current_value - target_value) / target_value * 100
             targetGap = (currentValue - targetValue) / targetValue * 100;
           }
         }
@@ -1351,7 +1363,7 @@ export default function AssessmentPage() {
     }
   };
 
-  // Calculate all scores in batch for manual entries
+  // Calculate all scores in batch for manual entries only
   const calculateAllScores = async () => {
     if (Object.keys(pendingManualEntries).length === 0) {
       toast.info('No manual entries to calculate scores for');
@@ -1359,7 +1371,7 @@ export default function AssessmentPage() {
     }
 
     setIsCalculatingScores(true);
-    toast.info('Calculating scores for all manual entries...');
+    toast.info('Calculating scores for manual entries...');
 
     try {
       // Group entries by indicator ID
@@ -1374,41 +1386,82 @@ export default function AssessmentPage() {
         entriesByIndicator[id].push({ period, value });
       });
 
-      // Calculate scores for each indicator
+      // Calculate scores for each indicator with pending entries
       for (const [indicatorId, entries] of Object.entries(entriesByIndicator)) {
         const id = parseInt(indicatorId);
         
-        // Sort entries by period to get the most recent one
-        const sortedEntries = entries.sort((a, b) => {
-          const aIndex = state.selectedPeriods.findIndex(p => p.name === a.period);
-          const bIndex = state.selectedPeriods.findIndex(p => p.name === b.period);
-          return bIndex - aIndex; // Most recent first
-        });
-
-        const currentEntry = sortedEntries[0];
-        const currentValue = currentEntry.value;
+        // Get indicator data to access all existing values
+        const indicatorData = state.multiPeriodData?.[0]?.objectives.find(obj => 
+          obj.indicators.some(ind => ind.id === id)
+        )?.indicators.find(ind => ind.id === id);
         
-        // Find previous value from the next entry or existing data
+        // Create a map of all available data (existing + pending)
+        const allData: Record<string, number | null> = {};
+        
+        // Add existing data with robust key lookup
+        if (indicatorData?.data_values) {
+          Object.entries(indicatorData.data_values).forEach(([periodKey, dataValue]) => {
+            if (dataValue?.value !== null && dataValue?.value !== undefined) {
+              allData[periodKey] = dataValue.value;
+            }
+          });
+        }
+        
+        // Add pending entries (these override existing data)
+        entries.forEach(({ period, value }) => {
+          allData[period] = value;
+        });
+        
+        console.log(`All data for indicator ${id}:`, allData);
+        
+        // Simplified approach: find the first two periods that have data
+        let currentPeriod = null;
+        let currentValue = null;
+        let previousPeriod = null;
         let previousValue = null;
-        if (sortedEntries.length > 1) {
-          previousValue = sortedEntries[1].value;
-        } else {
-          // Try to get from existing data
-          const currentPeriodIndex = state.selectedPeriods.findIndex(p => p.name === currentEntry.period);
-          const previousPeriodObj = currentPeriodIndex > 0 ? state.selectedPeriods[currentPeriodIndex - 1] : null;
+        
+        // Iterate through periods in REVERSE order to find the most recent two with data
+        for (let i = state.selectedPeriods.length - 1; i >= 0; i--) {
+          const period = state.selectedPeriods[i];
+          // Try multiple possible keys for each period
+          const possibleKeys = [period.name, period.code, period.displayName].filter(Boolean);
+          let periodValue = null;
           
-          if (previousPeriodObj) {
-            const indicatorData = state.multiPeriodData?.[0]?.objectives.find(obj => 
-              obj.indicators.some(ind => ind.id === id)
-            )?.indicators.find(ind => ind.id === id);
-            
-            if (indicatorData) {
-              previousValue = indicatorData.data_values?.[previousPeriodObj.code]?.value || 
-                             indicatorData.data_values?.[previousPeriodObj.name]?.value ||
-                             indicatorData.data_values?.[previousPeriodObj.displayName]?.value ||
-                             null;
+          for (const key of possibleKeys) {
+            if (allData[key] !== null && allData[key] !== undefined) {
+              periodValue = allData[key];
+              console.log(`Found value ${periodValue} for period ${period.name} using key: ${key}`);
+              break;
             }
           }
+          
+          if (periodValue !== null && periodValue !== undefined) {
+            if (currentValue === null) {
+              currentPeriod = period;
+              currentValue = periodValue;
+              console.log(`Set current: ${currentValue} for period: ${currentPeriod.name}`);
+            } else if (previousValue === null) {
+              previousPeriod = period;
+              previousValue = periodValue;
+              console.log(`Set previous: ${previousValue} for period: ${previousPeriod.name}`);
+              break; // We found both current and previous, no need to continue
+            }
+          }
+        }
+        
+        // Debug: Log the values being sent to backend
+        console.log(`Sending to backend for indicator ${id}:`, {
+          currentValue,
+          previousValue,
+          currentPeriod: currentPeriod?.name,
+          previousPeriod: previousPeriod?.name,
+          allData
+        });
+
+        // Skip calculation if no current value (indicator has no data)
+        if (currentValue === null || currentValue === undefined) {
+          console.log(`Skipping indicator ${id} - no data available`);
+          continue;
         }
 
         // Calculate score using backend API
@@ -1420,13 +1473,13 @@ export default function AssessmentPage() {
           // Calculate percent change on frontend if backend doesn't provide it
           let finalPercentChange = backendScore.percent_change;
           if (finalPercentChange === null && currentValue !== null && previousValue !== null && previousValue !== 0) {
+            // Use backend calculation - it should now be correct
             finalPercentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
           }
           
           // Update state with calculated score
-          setState(prev => ({
-            ...prev,
-            multiPeriodData: prev.multiPeriodData?.map(periodData => ({
+          setState(prev => {
+            const updatedData = prev.multiPeriodData?.map(periodData => ({
               ...periodData,
               objectives: periodData.objectives.map(obj => ({
                 ...obj,
@@ -1444,17 +1497,30 @@ export default function AssessmentPage() {
                         score_color: getScoreColor(backendScore.score),
                         score_label: getScoreLabel(backendScore.score),
                         is_manual_override: false,
-                        isLoading: false
+                        isLoading: false,
+                        is_first_year: backendScore.is_first_year
                       }
                     };
                   }
                   return ind;
                 })
               }))
-            })) || null
-          }));
+            })) || null;
+            
+            return {
+              ...prev,
+              multiPeriodData: updatedData
+            };
+          });
+          
         }
       }
+
+      // Force a re-render by updating a timestamp
+      setState(prev => ({
+        ...prev,
+        lastUpdate: Date.now()
+      }));
 
       // Clear pending entries
       setPendingManualEntries({});
@@ -1839,13 +1905,13 @@ export default function AssessmentPage() {
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Header Section */}
+        {/* Compact Header Section */}
         <div className="bg-white shadow-sm border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="py-6">
+            <div className="py-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">Holistic Assessment</h1>
+                  <h1 className="text-2xl font-bold text-gray-900">Holistic Assessment</h1>
                   <p className="mt-1 text-sm text-gray-600">
                     Comprehensive health system performance evaluation
                   </p>
@@ -1861,496 +1927,500 @@ export default function AssessmentPage() {
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-
-        {/* Error Display */}
-        {state.error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center">
-              <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-              <span className="text-red-700">{state.error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Progress Display */}
-        {state.syncProgress && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
+        {/* Main Content - Restructured Layout */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Error Display */}
+          {state.error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center">
-                <RefreshCw className="h-5 w-5 text-blue-500 mr-2 animate-spin" />
-                <span className="text-blue-700 font-medium">{state.syncProgress.message}</span>
+                <AlertCircle className="h-4 w-4 text-red-500 mr-2" />
+                <span className="text-red-700 text-sm">{state.error}</span>
               </div>
-              <span className="text-blue-600 text-sm">
-                {state.syncProgress.current} / {state.syncProgress.total}
-              </span>
             </div>
-            <div className="w-full bg-blue-200 rounded-full h-2">
-              <div 
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(state.syncProgress.current / state.syncProgress.total) * 100}%` }}
-              ></div>
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Enhanced Action Bar */}
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
-            {/* Left side: Status and indicators */}
-            <div className="flex items-center space-x-4">
-              {/* Sector score badge */}
-              {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector_score && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium text-gray-700">Sector Score:</span>
-                    <span
-                        className="px-3 py-1 rounded-full text-white text-sm font-semibold shadow-sm"
-                      style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
-                    >
-                        {typeof state.multiPeriodData[0].sector_score.overall_score === 'number' ? state.multiPeriodData[0].sector_score.overall_score.toFixed(2) : '-'}
-                    </span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs">
-                      {state.multiPeriodData[0].sector_score.score_label}
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              
-              {/* Edit mode indicator */}
-              {state.currentAssessmentId && (
-                <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Editing Assessment
-                </Badge>
-              )}
+          {/* Progress Display */}
+          {state.syncProgress && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <RefreshCw className="h-4 w-4 text-blue-500 mr-2 animate-spin" />
+                  <span className="text-blue-700 font-medium text-sm">{state.syncProgress.message}</span>
+                </div>
+                <span className="text-blue-600 text-xs">
+                  {state.syncProgress.current} / {state.syncProgress.total}
+                </span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-1.5">
+                <div 
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${(state.syncProgress.current / state.syncProgress.total) * 100}%` }}
+                ></div>
+              </div>
             </div>
+          )}
 
-            {/* Right side: Action buttons */}
-            <div className="flex items-center space-x-3">
-              {/* Manual Entries Save Button */}
-              {hasUnsavedChanges && (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center">
-                    <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-                    <div className="flex flex-col mr-3">
-                      <span className="text-yellow-800 text-sm">Manual entries not saved to backend</span>
-                      <span className="text-yellow-600 text-xs">Save assessment to persist all changes</span>
+          {/* Compact Action Bar */}
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-3 lg:space-y-0">
+              {/* Left side: Status and indicators */}
+              <div className="flex items-center space-x-4">
+                {/* Sector score badge */}
+                {state.multiPeriodData && state.multiPeriodData.length>0 && state.multiPeriodData[0].sector_score && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-medium text-gray-700">Sector Score:</span>
+                        <span
+                          className="px-2 py-1 rounded-full text-white text-sm font-semibold shadow-sm"
+                          style={{ backgroundColor: state.multiPeriodData[0].sector_score.score_color || '#6c757d' }}
+                        >
+                          {typeof state.multiPeriodData[0].sector_score.overall_score === 'number' ? state.multiPeriodData[0].sector_score.overall_score.toFixed(2) : '-'}
+                        </span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="text-xs">
+                        {state.multiPeriodData[0].sector_score.score_label}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                
+                {/* Edit mode indicator */}
+                {state.currentAssessmentId && (
+                  <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Editing Assessment
+                  </Badge>
+                )}
+
+                {/* Manual Entries Save Button */}
+                {hasUnsavedChanges && (
+                  <div className="flex items-center space-x-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    <div className="flex flex-col">
+                      <span className="text-yellow-800 text-xs font-medium">Unsaved changes</span>
+                      <span className="text-yellow-600 text-xs">Save to persist</span>
                     </div>
                     <button
                       onClick={saveManualEntries}
                       disabled={state.loading}
-                      className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-sm"
+                      className="px-2 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-xs"
                     >
                       <Save className="h-3 w-3" />
-                      {state.loading ? 'Saving...' : 'Save Locally'}
+                      {state.loading ? 'Saving...' : 'Save'}
                     </button>
                   </div>
-                </div>
-              )}
-
-              {/* File Menu */}
-              <div className="relative group">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  File
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
-                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                  <div className="py-1">
-                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={()=>setIsOpenModal(true)}>
-                      Open Assessment
-                    </button>
-                    <button 
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                       onClick={handleSaveAssessment}
-                      disabled={!state.multiPeriodData || state.multiPeriodData.length === 0}
-                    >
-                      {state.currentAssessmentId ? 'Update Assessment' : 'Save Assessment'}
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
-              
-              {/* Export Menu */}
-              <div className="relative group">
+
+              {/* Right side: Action buttons */}
+              <div className="flex items-center space-x-2">
+                {/* Calculate Scores Button */}
+                {Object.keys(pendingManualEntries).length > 0 && (
+                  <Button 
+                    onClick={calculateAllScores}
+                    disabled={isCalculatingScores}
+                    size="sm"
+                    className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                    title="Calculate scores for all manual entries"
+                  >
+                    {isCalculatingScores ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                        Calculating...
+                      </>
+                    ) : (
+                      <>
+                        <Calculator className="h-3 w-3 mr-1" />
+                        Calculate ({Object.keys(pendingManualEntries).length})
+                      </>
+                    )}
+                  </Button>
+                )}
+                
+                {/* Generate Report Button */}
                 <Button 
-                  variant="outline" 
+                  onClick={handleGenerateReport}
+                  disabled={state.isGenerating || state.selectedPeriods.length === 0 || state.selectedOrgUnits.length === 0}
                   size="sm"
-                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                  className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                  title="Fetch DHIS2 data and calculate scores for selected periods and org units"
                 >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                  <ChevronDown className="h-3 w-3 ml-1" />
+                  {state.isGenerating ? (
+                    <>
+                      <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3 w-3 mr-1" />
+                      Generate Report
+                    </>
+                  )}
                 </Button>
-                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                  <div className="py-1">
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={isExporting}
-                      onClick={async ()=>{
-                        if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
-                        try{
-                          setIsExporting(true);
-                          setExportStatus('Generating Excel file...');
-                          toast.info('Generating Excel export... This may take a few moments.');
-                          
-                          const blob = await assessmentService.exportHolisticExcel({
-                            org_unit_ids: state.selectedOrgUnits,
-                            periods: state.selectedPeriods,
-                            include_scores: true,
-                          });
-                          
-                          setExportStatus('Preparing download...');
-                          
-                          // Create download link
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.setAttribute('download', `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
-                          a.style.display = 'none';
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          window.URL.revokeObjectURL(url);
-                          
-                          // Keep loading state for a moment to show download is complete
-                          setExportStatus('Download complete!');
-                          toast.success('Excel export generated successfully!');
-                          
-                          // Add a small delay to ensure download starts before clearing loading state
-                          setTimeout(() => {
+
+                {/* File Menu */}
+                <div className="relative group">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="border-gray-300 text-gray-700 hover:bg-gray-50 text-xs"
+                  >
+                    <FileText className="h-3 w-3 mr-1" />
+                    File
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                    <div className="py-1">
+                      <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100" onClick={()=>setIsOpenModal(true)}>
+                        Open Assessment
+                      </button>
+                      <button 
+                        className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                        onClick={handleSaveAssessment}
+                        disabled={!state.multiPeriodData || state.multiPeriodData.length === 0}
+                      >
+                        {state.currentAssessmentId ? 'Update Assessment' : 'Save Assessment'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Export Menu */}
+                <div className="relative group">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="border-gray-300 text-gray-700 hover:bg-gray-50 text-xs"
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                    <div className="py-1">
+                      <button
+                        className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isExporting}
+                        onClick={async ()=>{
+                          if (!state.selectedOrgUnits.length || !state.selectedPeriods.length) return;
+                          try{
+                            setIsExporting(true);
+                            setExportStatus('Generating Excel file...');
+                            toast.info('Generating Excel export... This may take a few moments.');
+                            
+                            const blob = await assessmentService.exportHolisticExcel({
+                              org_unit_ids: state.selectedOrgUnits,
+                              periods: state.selectedPeriods,
+                              include_scores: true,
+                            });
+                            
+                            setExportStatus('Preparing download...');
+                            
+                            // Create download link
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.setAttribute('download', `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
+                            a.style.display = 'none';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            window.URL.revokeObjectURL(url);
+                            
+                            // Keep loading state for a moment to show download is complete
+                            setExportStatus('Download complete!');
+                            toast.success('Excel export generated successfully!');
+                            
+                            // Add a small delay to ensure download starts before clearing loading state
+                            setTimeout(() => {
+                              setIsExporting(false);
+                              setExportStatus('');
+                            }, 1500);
+                          }catch(e){
+                            console.error('Export Excel error', e);
+                            toast.error('Failed to export Excel');
                             setIsExporting(false);
                             setExportStatus('');
-                          }, 1500);
-                        }catch(e){
-                          console.error('Export Excel error', e);
-                          toast.error('Failed to export Excel');
-                          setIsExporting(false);
-                          setExportStatus('');
-                        }
-                      }}
-                    >
-                      {isExporting ? (
-                        <>
-                          <RefreshCw className="h-3 w-3 mr-2 animate-spin" />
-                          {exportStatus || 'Generating...'}
-                        </>
-                      ) : (
-                        'Excel (.xlsx)'
-                      )}
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={exportToCSV}
-                    >
-                      CSV (.csv)
-                    </button>
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={exportToPDF}
-                    >
-                      PDF (print)
-                    </button>
+                          }
+                        }}
+                      >
+                        {isExporting ? (
+                          <>
+                            <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                            {exportStatus || 'Generating...'}
+                          </>
+                        ) : (
+                          'Excel (.xlsx)'
+                        )}
+                      </button>
+                      <button
+                        className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                        onClick={exportToCSV}
+                      >
+                        CSV (.csv)
+                      </button>
+                      <button
+                        className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                        onClick={exportToPDF}
+                      >
+                        PDF (print)
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-              
-              {/* Calculate Scores Button */}
-              {Object.keys(pendingManualEntries).length > 0 && (
-                <Button 
-                  onClick={calculateAllScores}
-                  disabled={isCalculatingScores}
-                  size="sm"
-                  className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Calculate scores for all manual entries"
-                >
-                  {isCalculatingScores ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Calculating Scores...
-                    </>
-                  ) : (
-                    <>
-                      <Calculator className="h-4 w-4 mr-2" />
-                      Calculate Scores ({Object.keys(pendingManualEntries).length})
-                    </>
-                  )}
-                </Button>
-              )}
-              
-              {/* Generate Report Button */}
-              <Button 
-                onClick={handleGenerateReport}
-                disabled={state.isGenerating || state.selectedPeriods.length === 0 || state.selectedOrgUnits.length === 0}
-                size="sm"
-                className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Fetch DHIS2 data and calculate scores for selected periods and org units"
-              >
-                {state.isGenerating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Fetching Data...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4 mr-2" />
-                    Generate Report
-                  </>
-                )}
-              </Button>
             </div>
-          </div>
           </div>
 
-          {/* Enhanced Configuration Section */}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-6">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-              <h3 className="text-lg font-semibold text-white flex items-center">
-                <Settings className="h-5 w-5 mr-2" />
-                Assessment Configuration
-              </h3>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Organization Units */}
-                <div className="space-y-3">
-                  <label className="block text-sm font-medium text-gray-700 flex items-center">
-                    <Building2 className="h-4 w-4 mr-2" />
-                    Organization Units
-                  </label>
+          {/* Configuration Collapsible Section */}
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden mb-4">
+            <button
+              onClick={() => setState(prev => ({ ...prev, configExpanded: !prev.configExpanded }))}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-left hover:from-blue-700 hover:to-indigo-700 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white flex items-center">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Assessment Configuration
+                </h3>
+                <ChevronDown className={`h-4 w-4 text-white transition-transform ${state.configExpanded ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+            
+            {state.configExpanded && (
+              <div className="p-4 border-t border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Organization Units */}
                   <div className="space-y-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsOrgUnitModalOpen(true)}
-                  disabled={state.loading}
-                      className="w-full justify-start"
-                >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Select Organization Units
-                </Button>
-                    <div className="flex flex-wrap gap-2">
-                  {state.selectedOrgUnits.length ? (
-                    state.selectedOrgUnits.map((orgUnitId, index) => {
-                      const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
-                      return (
-                            <Badge key={orgUnitId} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                          {orgUnit?.displayName || orgUnitId}
-                          <button
-                            onClick={() => setState(prev => ({
-                              ...prev,
-                              selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
-                            }))}
-                            className="ml-1 hover:text-blue-800"
-                          >
-                            ×
-                          </button>
-                        </Badge>
-                      );
-                    })
-                  ) : (
-                        <span className="text-sm text-gray-400 italic">No units selected</span>
-                  )}
+                    <label className="block text-xs font-medium text-gray-700 flex items-center">
+                      <Building2 className="h-3 w-3 mr-1" />
+                      Organization Units
+                    </label>
+                    <div className="space-y-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsOrgUnitModalOpen(true)}
+                        disabled={state.loading}
+                        className="w-full justify-start text-xs"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Select Organization Units
+                      </Button>
+                      <div className="flex flex-wrap gap-1">
+                        {state.selectedOrgUnits.length ? (
+                          state.selectedOrgUnits.map((orgUnitId, index) => {
+                            const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === orgUnitId);
+                            return (
+                              <Badge key={orgUnitId} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                                {orgUnit?.displayName || orgUnitId}
+                                <button
+                                  onClick={() => setState(prev => ({
+                                    ...prev,
+                                    selectedOrgUnits: prev.selectedOrgUnits.filter((_, i) => i !== index)
+                                  }))}
+                                  className="ml-1 hover:text-blue-800"
+                                >
+                                  ×
+                                </button>
+                              </Badge>
+                            );
+                          })
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No units selected</span>
+                        )}
+                      </div>
                     </div>
-                </div>
-              </div>
-
-                {/* Assessment Periods */}
-                <div className="space-y-3">
-                  <label className="block text-sm font-medium text-gray-700 flex items-center">
-                    <Clock className="h-4 w-4 mr-2" />
-                    Assessment Periods
-                  </label>
-                  <div className="space-y-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsPeriodModalOpen(true)}
-                  disabled={state.loading}
-                      className="w-full justify-start"
-                >
-                      <Plus className="h-4 w-4 mr-2" />
-                  Select Periods
-                </Button>
-                    <div className="flex flex-wrap gap-2">
-                  {state.selectedPeriods.length ? (
-                    state.selectedPeriods.map((period, index) => (
-                          <Badge key={period.id} variant="secondary" className="bg-green-50 text-green-700 border-green-200">
-                        {period.displayName}
-                        <button
-                          onClick={() => setState(prev => ({
-                            ...prev,
-                            selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
-                          }))}
-                          className="ml-1 hover:text-green-800"
-                        >
-                          ×
-                        </button>
-                      </Badge>
-                    ))
-                  ) : (
-                        <span className="text-sm text-gray-400 italic">No periods selected</span>
-                  )}
-                </div>
-              </div>
-              </div>
-
-                {/* Data Source Filter */}
-                <div className="space-y-3">
-                  <label className="block text-sm font-medium text-gray-700 flex items-center">
-                    <Database className="h-4 w-4 mr-2" />
-                    Data Source Filter
-                  </label>
-                  <div className="flex flex-col space-y-2">
-                    <Button 
-                      size="sm" 
-                      variant={indicatorSourceFilter==='all'?'default':'outline'}
-                      className={indicatorSourceFilter==='all'? 'bg-blue-600 text-white hover:bg-blue-700':'border-gray-300 text-gray-700 hover:bg-gray-50'}
-                      onClick={()=>setIndicatorSourceFilter('all')}
-                    >
-                      All Sources
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant={indicatorSourceFilter==='dhis2'?'default':'outline'}
-                      className={indicatorSourceFilter==='dhis2'? 'bg-blue-600 text-white hover:bg-blue-700':'border-gray-300 text-gray-700 hover:bg-gray-50'}
-                      onClick={()=>setIndicatorSourceFilter('dhis2')}
-                    >
-                      DHIS2 Only
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant={indicatorSourceFilter==='manual'?'default':'outline'}
-                      className={indicatorSourceFilter==='manual'? 'bg-blue-600 text-white hover:bg-blue-700':'border-gray-300 text-gray-700 hover:bg-gray-50'}
-                      onClick={()=>setIndicatorSourceFilter('manual')}
-                    >
-                      Manual Only
-                    </Button>
                   </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-
-
-        {/* Enhanced Excel-like Assessment Table */}
-        <Card className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-xl font-semibold text-gray-900 flex items-center">
-                  <BarChart3 className="h-6 w-6 mr-2 text-blue-600" />
-                  Assessment Report
-                </CardTitle>
-                <CardDescription className="text-sm text-gray-600 mt-1">
-                  Performance indicators with trend analysis, real-time scoring, and manual data entry
-                </CardDescription>
-              </div>
-              <div className="hidden md:flex items-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 font-medium">Organization:</span>
-                  {state.selectedOrgUnits.length ? (
-                    <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                      {state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || state.selectedOrgUnits[0]}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400 italic">None selected</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 font-medium">Periods:</span>
-                  {state.selectedPeriods.length ? (
-                    <div className="flex items-center gap-1 flex-wrap max-w-[400px]">
-                      {state.selectedPeriods.slice(0,3).map(p=> (
-                        <span key={p.id} className="px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">{p.displayName}</span>
-                      ))}
-                      {state.selectedPeriods.length > 3 && (
-                        <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200 font-medium">+{state.selectedPeriods.length-3} more</span>
-                      )}
+                  {/* Assessment Periods */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-700 flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      Assessment Periods
+                    </label>
+                    <div className="space-y-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsPeriodModalOpen(true)}
+                        disabled={state.loading}
+                        className="w-full justify-start text-xs"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Select Periods
+                      </Button>
+                      <div className="flex flex-wrap gap-1">
+                        {state.selectedPeriods.length ? (
+                          state.selectedPeriods.map((period, index) => (
+                            <Badge key={period.id} variant="secondary" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                              {period.displayName}
+                              <button
+                                onClick={() => setState(prev => ({
+                                  ...prev,
+                                  selectedPeriods: prev.selectedPeriods.filter((_, i) => i !== index)
+                                }))}
+                                className="ml-1 hover:text-green-800"
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No periods selected</span>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <span className="text-gray-400 italic">None selected</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="bg-white p-0">
-            {state.loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-blue-600" />
-                  <span className="text-gray-600 font-medium">Loading assessment data...</span>
-                </div>
-              </div>
-            ) : state.isGenerating ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-blue-600" />
-                  <div className="text-gray-900 font-medium mb-2">Generating assessment report...</div>
-                  {state.syncProgress && (
-                    <div className="text-sm text-gray-500">
-                      {state.syncProgress.message} ({state.syncProgress.current}/{state.syncProgress.total})
+                  </div>
+
+                  {/* Data Source Filter */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-700 flex items-center">
+                      <Database className="h-3 w-3 mr-1" />
+                      Data Source Filter
+                    </label>
+                    <div className="flex flex-col space-y-1">
+                      <Button 
+                        size="sm" 
+                        variant={indicatorSourceFilter==='all'?'default':'outline'}
+                        className={indicatorSourceFilter==='all'? 'bg-blue-600 text-white hover:bg-blue-700 text-xs':'border-gray-300 text-gray-700 hover:bg-gray-50 text-xs'}
+                        onClick={()=>setIndicatorSourceFilter('all')}
+                      >
+                        All Sources
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant={indicatorSourceFilter==='dhis2'?'default':'outline'}
+                        className={indicatorSourceFilter==='dhis2'? 'bg-blue-600 text-white hover:bg-blue-700 text-xs':'border-gray-300 text-gray-700 hover:bg-gray-50 text-xs'}
+                        onClick={()=>setIndicatorSourceFilter('dhis2')}
+                      >
+                        DHIS2 Only
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant={indicatorSourceFilter==='manual'?'default':'outline'}
+                        className={indicatorSourceFilter==='manual'? 'bg-blue-600 text-white hover:bg-blue-700 text-xs':'border-gray-300 text-gray-700 hover:bg-gray-50 text-xs'}
+                        onClick={()=>setIndicatorSourceFilter('manual')}
+                      >
+                        Manual Only
+                      </Button>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            ) : state.multiPeriodData ? (
-              <div className="p-6">
-                {(() => {
-                  const filtered = state.multiPeriodData.map(pd => ({
-                    ...pd,
-                    objectives: pd.objectives.map(obj => ({
-                      ...obj,
-                      indicators: obj.indicators.filter((ind:any) => {
-                        if (indicatorSourceFilter==='all') return true;
-                        const isDHIS2 = Boolean(ind.dhis2_uid);
-                        return indicatorSourceFilter==='dhis2' ? isDHIS2 : !isDHIS2;
-                      })
-                    }))
-                  }));
-                  return (
-                    <ExcelTable
-                      multiPeriodData={filtered}
-                      selectedPeriods={state.selectedPeriods}
-                      onCellEdit={handleManualEntryChangeSimple}
-                      onScoreChange={handleScoreChange}
-                      onMilestoneScoreChange={handleMilestoneScoreChange}
-                      onRemarksChange={handleRemarksChange}
-                      onMilestoneRemarksChange={handleMilestoneRemarksChange}
-                    />
-                  );
-                })()}
-              </div>
-            ) : (
-              <div className="text-center py-16 text-gray-500">
-                <BarChart3 className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Assessment Data</h3>
-                <p className="text-gray-600">Generate a report to view comprehensive health system performance data.</p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Enhanced Excel-like Assessment Table - Full Width */}
+          <Card className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
+                    <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+                    Assessment Report
+                  </CardTitle>
+                  <CardDescription className="text-xs text-gray-600 mt-1">
+                    Performance indicators with trend analysis, real-time scoring, and manual data entry
+                  </CardDescription>
+                </div>
+                <div className="hidden md:flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 font-medium">Organization:</span>
+                    {state.selectedOrgUnits.length ? (
+                      <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+                        {state.dhis2OrgUnitsFlat.find(ou=>ou.id===state.selectedOrgUnits[0])?.displayName || state.selectedOrgUnits[0]}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 italic">None selected</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 font-medium">Periods:</span>
+                    {state.selectedPeriods.length ? (
+                      <div className="flex items-center gap-1 flex-wrap max-w-[300px]">
+                        {state.selectedPeriods.slice(0,2).map(p=> (
+                          <span key={p.id} className="px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">{p.displayName}</span>
+                        ))}
+                        {state.selectedPeriods.length > 2 && (
+                          <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-200 font-medium">+{state.selectedPeriods.length-2} more</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 italic">None selected</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="bg-white p-0">
+              {state.loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-blue-600" />
+                    <span className="text-gray-600 font-medium">Loading assessment data...</span>
+                  </div>
+                </div>
+              ) : state.isGenerating ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-blue-600" />
+                    <div className="text-gray-900 font-medium mb-2">Generating assessment report...</div>
+                    {state.syncProgress && (
+                      <div className="text-sm text-gray-500">
+                        {state.syncProgress.message} ({state.syncProgress.current}/{state.syncProgress.total})
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : state.multiPeriodData ? (
+                <div className="p-4">
+                  {(() => {
+                    const filtered = state.multiPeriodData.map(pd => ({
+                      ...pd,
+                      objectives: pd.objectives.map(obj => ({
+                        ...obj,
+                        indicators: obj.indicators.filter((ind:any) => {
+                          if (indicatorSourceFilter==='all') return true;
+                          const isDHIS2 = Boolean(ind.dhis2_uid);
+                          return indicatorSourceFilter==='dhis2' ? isDHIS2 : !isDHIS2;
+                        })
+                      }))
+                    }));
+                    return (
+                      <ExcelTable
+                        multiPeriodData={filtered}
+                        selectedPeriods={state.selectedPeriods}
+                        onCellEdit={handleManualEntryChangeSimple}
+                        onScoreChange={handleScoreChange}
+                        onMilestoneScoreChange={handleMilestoneScoreChange}
+                        onRemarksChange={handleRemarksChange}
+                        onMilestoneRemarksChange={handleMilestoneRemarksChange}
+                      />
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="text-center py-16 text-gray-500">
+                  <BarChart3 className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Assessment Data</h3>
+                  <p className="text-gray-600">Generate a report to view comprehensive health system performance data.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Modals */}
-                  <PeriodSelectionModal
-            isOpen={isPeriodModalOpen}
-            onClose={() => setIsPeriodModalOpen(false)}
-            onPeriodsSelected={handlePeriodSelection}
-            selectedPeriods={state.selectedPeriods}
-          />
+        <PeriodSelectionModal
+          isOpen={isPeriodModalOpen}
+          onClose={() => setIsPeriodModalOpen(false)}
+          onPeriodsSelected={handlePeriodSelection}
+          selectedPeriods={state.selectedPeriods}
+        />
 
         <OrgUnitSelectionModal
           isOpen={isOrgUnitModalOpen}
@@ -2413,7 +2483,6 @@ export default function AssessmentPage() {
             </div>
           </div>
         )}
-        </div>
       </div>
     </DashboardLayout>
   );

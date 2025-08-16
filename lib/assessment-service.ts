@@ -67,6 +67,7 @@ export interface IndicatorScoreData {
   is_manual_override: boolean;
   remarks?: string;
   isLoading?: boolean;
+  is_first_year?: string | boolean;
 }
 
 export interface ObjectiveScoreData {
