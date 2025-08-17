@@ -1400,9 +1400,9 @@ export default function AssessmentPage() {
     if (targetAchieved === "Yes") {
       // Target WAS achieved - check performance change
       if (changeCategory === ">5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
-      if (changeCategory === "5%<=C>-5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
+      if (changeCategory === "-5%<C<=5%") return { score: 2, percent_change: percentChange, target_gap: targetGap };
       if (changeCategory === "-10%<C<=-5%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
-      if (changeCategory === "<=-10%") return { score: -2, percent_change: percentChange, target_gap: targetGap };
+      if (changeCategory === "<=-10%") return { score: 0, percent_change: percentChange, target_gap: targetGap };
       // Target achieved but no change category (e.g., previous_value is 0)
       // For decrease indicators, achieving target should score 2
       // For increase indicators, achieving target should score 2
@@ -1410,7 +1410,7 @@ export default function AssessmentPage() {
     } else {
       // Target NOT achieved - check performance change
       if (changeCategory === ">5%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
-      if (changeCategory === "5%<=C>-5%") {
+      if (changeCategory === "-5%<C<=5%") {
         // Stagnation - check how close to target
         if (gapCategory === "<=10%") return { score: 1, percent_change: percentChange, target_gap: targetGap };
         if (gapCategory === "10%<PT<=40%") return { score: 0, percent_change: percentChange, target_gap: targetGap };
@@ -1966,30 +1966,47 @@ export default function AssessmentPage() {
     }
   };
 
+  // Debug function to log indicator 1.13 data
+  const debugIndicator113 = () => {
+    if (!state.multiPeriodData?.[0]?.objectives) return;
+    
+    for (const objective of state.multiPeriodData[0].objectives) {
+      for (const indicator of objective.indicators) {
+        if (indicator.indicator_number === '1.13') {
+          console.log('=== DEBUG INDICATOR 1.13 ===');
+          console.log('Indicator:', indicator.name);
+          console.log('Score Data:', indicator.score);
+          console.log('Data Values:', indicator.data_values);
+          console.log('Target Value:', indicator.target_value);
+          console.log('Target Type:', indicator.target_type);
+          
+          if (indicator.score) {
+            console.log('Score:', indicator.score.score);
+            console.log('Percent Change:', indicator.score.percent_change);
+            console.log('Target Gap:', indicator.score.target_gap);
+            console.log('Change Category:', indicator.score.change_category);
+            console.log('Gap Category:', indicator.score.gap_category);
+            console.log('Current Value:', indicator.score.current_value);
+            console.log('Previous Value:', indicator.score.previous_value);
+          }
+          console.log('========================');
+          return;
+        }
+      }
+    }
+  };
+
+  // Call debug function when data changes
+  useEffect(() => {
+    if (state.multiPeriodData?.[0]) {
+      debugIndicator113();
+    }
+  }, [state.multiPeriodData]);
+
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Compact Header Section */}
-        <div className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="py-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Holistic Assessment</h1>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Comprehensive health system performance evaluation
-                  </p>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Real-time scoring</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+
 
         {/* Main Content - Restructured Layout */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

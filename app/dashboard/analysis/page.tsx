@@ -189,7 +189,7 @@ export default function AnalysisPage() {
     switch (category) {
       case '>5%':
         return <TrendingUp className="h-4 w-4 text-green-600" />;
-      case '5%<=C>-5%':
+              case '-5%<C<=5%':
         return <Minus className="h-4 w-4 text-yellow-600" />;
       case '-10%<C<=-5%':
         return <TrendingDown className="h-4 w-4 text-orange-600" />;
