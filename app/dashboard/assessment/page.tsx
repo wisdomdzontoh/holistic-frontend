@@ -1296,22 +1296,32 @@ export default function AssessmentPage() {
     // Step 4: Performance Change - EXACTLY matches backend logic
     let percentChange = null;
     let changeCategory = null;
-    if (currentValue !== null && previousValue !== null && previousValue !== 0) {
+    if (currentValue !== null && previousValue !== null) {
       // Calculate raw percentage change based on indicator type
       const targetType = indicator.target_type || 'increase';
       const targetFormat = indicator.target_format || 'SINGLE';
       
       if (targetFormat === 'RANGE') {
         // For range indicators, always use standard formula regardless of target_type
-        percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
+        if (previousValue !== 0) {
+          percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
+        }
       } else {
         // For non-range indicators, use target_type specific formula
         if (targetType === 'decrease') {
           // For decrease indicators: (previous_value - current_value) / abs(current_value) * 100
-          percentChange = Math.round(((previousValue - currentValue) / Math.abs(currentValue)) * 100 * 100) / 100;
+          if (currentValue !== 0) {
+            percentChange = Math.round(((previousValue - currentValue) / Math.abs(currentValue)) * 100 * 100) / 100;
+          } else {
+            // Special case: current value is 0 for decrease indicator
+            // This means excellent performance (achieved the best possible outcome)
+            percentChange = null;  // Will be handled in scoring logic
+          }
         } else {
           // For increase indicators: (current_value - previous_value) / abs(previous_value) * 100
-          percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
+          if (previousValue !== 0) {
+            percentChange = Math.round(((currentValue - previousValue) / Math.abs(previousValue)) * 100 * 100) / 100;
+          }
         }
       }
       
@@ -1319,14 +1329,16 @@ export default function AssessmentPage() {
       const performanceChange = percentChange;
       
       // Categorize based on performance change (not raw change) - EXACTLY matches backend
-      if (performanceChange <= -10) {
-        changeCategory = "<=-10%";
-      } else if (performanceChange <= -5) {
-        changeCategory = "-10%<C<=-5%";
-      } else if (performanceChange <= 5) {
-        changeCategory = "-5%<C<=5%";  // Stagnation category
-      } else if (performanceChange > 5) {
-        changeCategory = ">5%";
+      if (performanceChange !== null) {
+        if (performanceChange <= -10) {
+          changeCategory = "<=-10%";
+        } else if (performanceChange <= -5) {
+          changeCategory = "-10%<C<=-5%";
+        } else if (performanceChange <= 5) {
+          changeCategory = "-5%<C<=5%";  // Stagnation category
+        } else if (performanceChange > 5) {
+          changeCategory = ">5%";
+        }
       }
     }
     
@@ -1365,7 +1377,13 @@ export default function AssessmentPage() {
           // Calculate gap based on target type
           if (targetType === 'decrease') {
             // For decrease indicators: (target_value - current_value) / current_value * 100
-            targetGap = (targetValue - currentValue) / currentValue * 100;
+            if (currentValue !== 0) {
+              targetGap = (targetValue - currentValue) / currentValue * 100;
+            } else {
+              // Special case: current value is 0 for decrease indicator
+              // This means excellent performance (achieved the best possible outcome)
+              targetGap = null;
+            }
           } else {
             // For increase indicators: (current_value - target_value) / target_value * 100
             targetGap = (currentValue - targetValue) / targetValue * 100;
@@ -1389,6 +1407,17 @@ export default function AssessmentPage() {
     }
     
     // Step 6: Final Score Calculation - EXACTLY matches backend _calculate_final_score
+    
+    // Special case: Decrease indicator with current value = 0 (excellent performance)
+    // If it's a decrease indicator and current value is 0, automatically score 2
+    if (indicator.target_type === 'decrease' && currentValue === 0) {
+      return { 
+        score: 2, 
+        percent_change: percentChange, 
+        target_gap: targetGap 
+      };
+    }
+    
     if (isFirstYear) {
       return { 
         score: targetAchieved === "Yes" ? 1 : 0, 
