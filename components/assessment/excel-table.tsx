@@ -16,6 +16,7 @@ interface ExcelTableProps {
   onMilestoneScoreChange?: (objectiveId: number, score: string) => void;
   onRemarksChange?: (indicatorId: number, remarks: string) => void;
   onMilestoneRemarksChange?: (objectiveId: number, remarks: string) => void;
+  onBulkScoreCalculation?: (manualEntries: Record<number, Record<string, number | null>>) => Promise<void>;
 }
 
 interface CellData {
@@ -33,9 +34,22 @@ export default function ExcelTable({
   onScoreChange,
   onMilestoneScoreChange,
   onRemarksChange,
-  onMilestoneRemarksChange
+  onMilestoneRemarksChange,
+  onBulkScoreCalculation
 }: ExcelTableProps) {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
+  const [hasManualEntries, setHasManualEntries] = useState(false);
+  const [isCalculatingScores, setIsCalculatingScores] = useState(false);
+
+  // Check if there are manual entries
+  useEffect(() => {
+    if (cellData) {
+      const manualEntries = Object.values(cellData).some(cell => 
+        !cell.isDHIS2Data && cell.value.trim() !== ''
+      );
+      setHasManualEntries(manualEntries);
+    }
+  }, [cellData]);
 
   // Initialize cell data when multiPeriodData changes or when forced to refresh
   useEffect(() => {
@@ -216,6 +230,37 @@ export default function ExcelTable({
     return '#FF0000';
   };
 
+  const handleBulkScoreCalculation = async () => {
+    if (!onBulkScoreCalculation) return;
+    
+    setIsCalculatingScores(true);
+    try {
+      // Collect manual entries
+      const manualEntries: Record<number, Record<string, number | null>> = {};
+      
+      Object.entries(cellData).forEach(([cellKey, cell]) => {
+        if (!cell.isDHIS2Data && cell.value.trim() !== '') {
+          const [indicatorId, periodKey] = cellKey.split('_');
+          const indicatorIdNum = parseInt(indicatorId);
+          const value = parseFloat(cell.value);
+          
+          if (!isNaN(value)) {
+            if (!manualEntries[indicatorIdNum]) {
+              manualEntries[indicatorIdNum] = {};
+            }
+            manualEntries[indicatorIdNum][periodKey] = value;
+          }
+        }
+      });
+
+      await onBulkScoreCalculation(manualEntries);
+    } catch (error) {
+      console.error('Error calculating scores:', error);
+    } finally {
+      setIsCalculatingScores(false);
+    }
+  };
+
   const getRowBackground = (type: string) => {
     switch (type) {
       case 'milestone':
@@ -256,8 +301,46 @@ export default function ExcelTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse border border-gray-300 text-sm">
+    <div className="overflow-x-auto overflow-y-auto max-h-full print-table-container">
+      {/* Print Header - Only visible when printing */}
+      <div className="hidden print:block print:mb-4 print:text-center">
+        <h1 className="print:text-2xl print:font-bold print:mb-2">Holistic Assessment Report</h1>
+        <p className="print:text-sm print:text-gray-600">
+          Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
+        </p>
+      </div>
+      
+      {/* Manual Scoring Controls - Hidden when printing */}
+      <div className="no-print mb-4 flex justify-between items-center">
+        <div className="text-sm text-gray-600">
+          {hasManualEntries ? (
+            <span className="text-green-600">✓ Manual entries detected</span>
+          ) : (
+            <span>Enter values in manual indicator cells to calculate scores</span>
+          )}
+        </div>
+        {hasManualEntries && onBulkScoreCalculation && (
+          <button
+            onClick={handleBulkScoreCalculation}
+            disabled={isCalculatingScores}
+            className="px-4 py-2 bg-[#1E8449] text-white rounded-md hover:bg-[#1E8449]/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isCalculatingScores ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Calculating Scores...
+              </>
+            ) : (
+              <>
+                <span>🚀</span>
+                Calculate Scores
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      
+      <table className="w-full border-collapse border border-gray-300 text-sm print-table">
         <thead>
           <tr style={{ backgroundColor: '#154360' }} className="text-white">
             <th className="border border-gray-300 px-2 py-2 text-left font-medium" style={{ width: '50px' }}>
@@ -310,7 +393,7 @@ export default function ExcelTable({
                         <div className="flex items-center justify-center gap-1 cursor-help">
                           {indicator.indicator_number || `${objIndex + 1}.${indicator.display_order || indIndex + 1}`}
                           {indicator.dhis2_uid ? (
-                            <Database className="h-3 w-3 text-blue-600" />
+                            <Database className="h-3 w-3 text-[#1E8449]" />
                           ) : (
                             <Edit3 className="h-3 w-3 text-orange-600" />
                           )}
@@ -320,7 +403,7 @@ export default function ExcelTable({
                         <div className="text-sm">
                           {indicator.dhis2_uid ? (
                             <div>
-                              <p className="font-medium text-blue-600">DHIS2 Indicator</p>
+                              <p className="font-medium text-[#1E8449]">DHIS2 Indicator</p>
                               <p className="text-xs text-gray-600">UID: {indicator.dhis2_uid}</p>
                               <p className="text-xs">Data fetched automatically from DHIS2</p>
                             </div>
@@ -355,7 +438,7 @@ export default function ExcelTable({
                             inputMode="decimal"
                             value={cell?.value || ''}
                             onChange={(e) => handleCellChange(cellKey, e.target.value)}
-                            className="h-6 text-xs border-0 p-1 focus:ring-1 focus:ring-blue-500"
+                            className="h-6 text-xs border-0 p-1 focus:ring-1 focus:ring-[#1E8449]"
                             placeholder="Enter value"
                           />
                         ) : (
@@ -407,7 +490,7 @@ export default function ExcelTable({
                         value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
                         onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
                       >
-                        <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500 font-bold" style={{ 
+                        <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-[#1E8449] font-bold" style={{ 
                           backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
                           color: 'black'
                         }}>
@@ -505,7 +588,7 @@ export default function ExcelTable({
                             value={objective.milestone.score?.toString() || '-2'}
                             onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
                           >
-                            <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-blue-500 font-bold w-full cursor-help" style={{ 
+                            <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-[#1E8449] font-bold w-full cursor-help" style={{ 
                               backgroundColor: getScoreColor(`${objective.milestone.score || -2}.00`),
                               color: 'black'
                             }}>

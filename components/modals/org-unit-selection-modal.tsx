@@ -208,7 +208,7 @@ export function OrgUnitSelectionModal({
         <div 
           className={`flex items-center py-2 px-3 rounded-md transition-colors ${
             node.isSelected 
-              ? 'bg-blue-50 border border-blue-200' 
+                              ? 'bg-[#1E8449]/10 border border-[#1E8449]/20' 
               : 'hover:bg-gray-50 border border-transparent'
           }`}
           style={indentStyle}
@@ -243,14 +243,14 @@ export function OrgUnitSelectionModal({
           
           {/* Icon */}
           {isLeaf ? (
-            <Building2 className="h-4 w-4 text-blue-600 mr-3" />
+                            <Building2 className="h-4 w-4 text-[#1E8449] mr-3" />
           ) : (
             <Folder className="h-4 w-4 text-gray-500 mr-3" />
           )}
           
           {/* Name */}
           <span className={`text-sm flex-1 font-medium ${
-            node.isSelected ? 'text-blue-900' : 'text-gray-800'
+                            node.isSelected ? 'text-[#1E8449]' : 'text-gray-800'
           }`}>
             {node.displayName}
           </span>
@@ -338,7 +338,7 @@ export function OrgUnitSelectionModal({
           {selectedUnits.length > 0 && (
             <div className="flex-shrink-0 border-t pt-4">
               <h3 className="font-medium mb-3 text-gray-800 flex items-center">
-                <Building2 className="h-4 w-4 mr-2 text-blue-600" />
+                <Building2 className="h-4 w-4 mr-2 text-[#1E8449]" />
                 Selected Units ({selectedUnits.length})
               </h3>
               <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 bg-gray-50 rounded-md">
@@ -346,12 +346,12 @@ export function OrgUnitSelectionModal({
                   <Badge 
                     key={selectedUnits[index]} 
                     variant="secondary" 
-                    className="bg-blue-100 text-blue-800 border border-blue-300 hover:bg-blue-200 transition-colors"
+                    className="bg-[#1E8449]/20 text-[#1E8449] border border-[#1E8449]/30 hover:bg-[#1E8449]/30 transition-colors"
                   >
                     <span className="font-medium">{name}</span>
                     <button
                       onClick={() => toggleOrgUnitSelection(selectedUnits[index])}
-                      className="ml-2 hover:text-blue-900 font-bold text-lg leading-none"
+                      className="ml-2 hover:text-[#1E8449] font-bold text-lg leading-none"
                     >
                       ×
                     </button>

@@ -133,7 +133,7 @@ export function OpenAssessmentModal({
                   <tr><td className="px-3 py-3" colSpan={5}>No saved assessments</td></tr>
                 ) : (
                   view.map(item => (
-                    <tr key={item.id} className={`cursor-pointer hover:bg-gray-50 ${selectedId===item.id?'bg-blue-50':''}`} onClick={() => setSelectedId(item.id)}>
+                    <tr key={item.id} className={`cursor-pointer hover:bg-gray-50 ${selectedId===item.id?'bg-[#1E8449]/10':''}`} onClick={() => setSelectedId(item.id)}>
                       <td className="px-3 py-2 font-medium">{item.name}</td>
                       <td className="px-3 py-2">{item.org_unit_name}</td>
                       <td className="px-3 py-2">{new Date(item.created_at).toLocaleString()}</td>

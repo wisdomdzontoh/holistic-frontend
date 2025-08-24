@@ -1,12 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { 
-  LogOut
+  LogOut,
+  Grid3X3,
+  Mail,
+  Search
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -16,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { NavigationModal } from './navigation-modal';
 
 interface DashboardHeaderProps {
   user: any;
@@ -23,6 +27,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ user }: DashboardHeaderProps) {
   const { logout } = useAuth();
+  const [isNavigationModalOpen, setIsNavigationModalOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -38,62 +43,80 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   };
 
   return (
-    <header className="text-white shadow-lg border-b" style={{ backgroundColor: '#154360', borderColor: '#2E86AB' }}>
-      <div className="flex items-center justify-between px-6 py-4">
-        {/* Left side - Logo and Title */}
-        <div className="flex items-center space-x-4">
-          {/* Ghana Coat of Arms Logo */}
+    <>
+      <header className="text-white shadow-lg border-b" style={{ backgroundColor: '#1e3a8a', borderColor: '#1e3a8a' }}>
+        <div className="flex items-center justify-between px-6 py-3">
+          {/* Left side - Logo and Title */}
           <div className="flex items-center space-x-4">
-            <div className="relative w-12 h-12">
+            <div className="relative w-10 h-10">
               <Image
                 src="/images/coat-of-arms.png"
                 alt="Ghana Coat of Arms"
-                width={48}
-                height={48}
+                width={40}
+                height={40}
                 className="object-contain"
                 priority
               />
             </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-wide">HOLISTIC ASSESSMENT</h1>
-              <p className="text-sm font-medium text-gray-300">Health Facility Assessment Tool</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Right side - User controls */}
-        <div className="flex items-center space-x-4">
-          {/* Online status */}
-          <div className="flex items-center space-x-2 text-green-300 bg-green-900/20 px-3 py-1 rounded-full">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm font-medium">Online</span>
+            <h1 className="text-lg font-semibold tracking-wide">HOLISTIC ASSESSMENT - Dashboard</h1>
           </div>
 
-          {/* User menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="text-white hover:bg-white/10">
-                <Avatar className="h-8 w-8 border-2" style={{ borderColor: '#2E86AB' }}>
-                  <AvatarFallback className="text-white font-semibold" style={{ backgroundColor: '#2E86AB' }}>
+          {/* Right side - Controls */}
+          <div className="flex items-center space-x-3">
+            {/* Online status */}
+                         <div className="flex items-center space-x-2 text-green-300 bg-[#1E8449]/20 px-3 py-1 rounded-full">
+               <div className="w-2 h-2 bg-[#1E8449] rounded-full"></div>
+               <span className="text-sm font-medium">Online</span>
+             </div>
+
+            {/* Mail icon */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10 h-8 w-8 p-0"
+            >
+              <Mail className="h-4 w-4" />
+            </Button>
+
+            {/* Navigation Grid Icon (Apps) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10 h-8 w-8 p-0"
+              onClick={() => setIsNavigationModalOpen(true)}
+            >
+              <Grid3X3 className="h-4 w-4" />
+            </Button>
+
+            {/* User initials */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="text-white hover:bg-white/10 h-8 px-2">
+                  <span className="text-sm font-semibold">
                     {getUserInitials(user?.dhis2_username || 'User')}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="ml-3 text-sm font-medium">
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-semibold">
                   {user?.dhis2_username || 'User'}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-semibold">My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Navigation Modal */}
+      <NavigationModal 
+        isOpen={isNavigationModalOpen} 
+        onClose={() => setIsNavigationModalOpen(false)} 
+      />
+    </>
   );
 } 

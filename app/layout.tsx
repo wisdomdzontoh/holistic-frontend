@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DHIS2 Data Validator - Holistic Assessment Webapp",
-  description: "A comprehensive data validation and assessment system for DHIS2",
+  title: "Holistic Assessment Management System",
+  description: "A comprehensive assessment system for DHIS2",
 };
 
 export default function RootLayout({

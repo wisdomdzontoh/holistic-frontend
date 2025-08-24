@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { DashboardHeader } from '../dashboard/dashboard-header';
-import { DashboardSidebar } from '../dashboard/dashboard-sidebar';
 import { useAuth } from '@/lib/auth-context';
 
 interface DashboardLayoutProps {
@@ -25,25 +24,22 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-200 flex flex-col">
+    <div className="min-h-screen bg-gray-100 flex flex-col">
       <DashboardHeader user={user} />
-      <div className="flex flex-1">
-        <DashboardSidebar />
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
-      </div>
+      <main className="flex-1 overflow-y-auto">
+        {children}
+      </main>
       {/* Footer */}
-      <footer className="text-white border-t py-3 px-6" style={{ backgroundColor: '#154360', borderColor: '#2E86AB' }}>
+      <footer className="text-white border-t py-3 px-6" style={{ backgroundColor: '#1e3a8a', borderColor: '#1e3a8a' }}>
         <p className="text-xs text-center text-gray-300">
-          Designed by{' '}
+          Developed by{' '}
           <a
             href="https://wisdomdzontoh.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
             className="text-white hover:text-gray-200 underline"
           >
-            Wisdom Dzontoh
+            Wisdom Dzontoh 🙂
           </a>
         </p>
       </footer>

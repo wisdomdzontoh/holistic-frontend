@@ -172,8 +172,10 @@ class AssessmentService {
 
   async getMultiPeriodAssessmentData(params: {
     org_unit_ids: string[];
+    org_unit_names?: string[];
     periods: Period[];
     include_scores?: boolean;
+    manual_entries?: Record<number, Record<string, number | null>>;
   }): Promise<AssessmentData[]> {
     const formattedPeriods = params.periods.map(period => ({
       name: period.name,
@@ -191,14 +193,17 @@ class AssessmentService {
       },
       body: JSON.stringify({
         org_unit_ids: params.org_unit_ids,
+        org_unit_names: params.org_unit_names || [],
         periods: formattedPeriods,
         include_scores: params.include_scores ?? true,
+        manual_entries: params.manual_entries || {},
       }),
     });
   }
 
   async exportHolisticExcel(params: {
     org_unit_ids: string[];
+    org_unit_names?: string[];
     periods: Period[];
     include_scores?: boolean;
     manual_entries?: Record<number, Record<string, number | null>>;
@@ -220,6 +225,7 @@ class AssessmentService {
       credentials: 'include', // Include cookies for session management
       body: JSON.stringify({
         org_unit_ids: params.org_unit_ids,
+        org_unit_names: params.org_unit_names || [],
         periods: formattedPeriods,
         include_scores: params.include_scores ?? true,
         manual_entries: params.manual_entries || {},
@@ -232,6 +238,57 @@ class AssessmentService {
     }
     
     return response.blob();
+  }
+
+  async exportHolisticExcelWithFilename(params: {
+    org_unit_ids: string[];
+    org_unit_names?: string[];
+    periods: Period[];
+    include_scores?: boolean;
+    manual_entries?: Record<number, Record<string, number | null>>;
+    pre_calculated_scores?: Record<number, any>;
+  }): Promise<{blob: Blob, filename: string}>{
+    const formattedPeriods = params.periods.map(period => ({
+      name: period.name,
+      period_type: period.periodType,
+      start_date: period.startDate,
+      end_date: period.endDate,
+      code: period.code
+    }));
+    
+    const response = await fetch(`${this.baseUrl}/assessments/holistic-assessment/export_excel/`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include', // Include cookies for session management
+      body: JSON.stringify({
+        org_unit_ids: params.org_unit_ids,
+        org_unit_names: params.org_unit_names || [],
+        periods: formattedPeriods,
+        include_scores: params.include_scores ?? true,
+        manual_entries: params.manual_entries || {},
+        pre_calculated_scores: params.pre_calculated_scores || {},
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+    
+    // Extract filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`; // fallback
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+    
+    const blob = await response.blob();
+    return { blob, filename };
   }
 
   async getAssessmentPeriods(): Promise<AssessmentPeriod[]> {
@@ -310,7 +367,8 @@ class AssessmentService {
   }
 
   async getOrgUnits(): Promise<OrgUnit[]> {
-    return this.makeRequest('/organisation/org-units/');
+    const response = await this.makeRequest('/assessments/management/dhis2-org-units/?hierarchy=true&max_depth=3');
+    return response.org_units || [];
   }
 
   async getDHIS2OrgUnits(level?: number, parentId?: string, userOnly: boolean = false): Promise<DHIS2OrgUnit[]> {
