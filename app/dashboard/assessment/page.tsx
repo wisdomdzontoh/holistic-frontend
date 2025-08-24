@@ -37,8 +37,10 @@ import {
 import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-modal';
 import PeriodSelectionModal from '@/components/modals/period-selection-modal';
 import { OpenAssessmentModal } from '@/components/modals/open-assessment-modal';
+import { SaveAssessmentModal } from '@/components/modals/save-assessment-modal';
 import ExcelTable from '@/components/assessment/excel-table';
 import { DashboardHeader } from '@/components/dashboard/dashboard-header';
+import { toast } from 'sonner';
 
 interface State {
   selectedOrgUnits: string[];
@@ -76,17 +78,26 @@ export default function AssessmentPage() {
   const [isOrgUnitModalOpen, setIsOrgUnitModalOpen] = useState(false);
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isOpenAssessmentModalOpen, setIsOpenAssessmentModalOpen] = useState(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingSavedAssessment, setIsLoadingSavedAssessment] = useState(false);
+  const [isLoadingOrgUnits, setIsLoadingOrgUnits] = useState(false);
+  const [currentAssessmentId, setCurrentAssessmentId] = useState<string | null>(null);
+  const [currentAssessmentName, setCurrentAssessmentName] = useState<string | null>(null);
 
   // Fetch org units on component mount
   useEffect(() => {
     const fetchOrgUnits = async () => {
+      setIsLoadingOrgUnits(true);
       try {
         const orgUnits = await assessmentService.getOrgUnits();
         setState(prev => ({ ...prev, dhis2OrgUnitsFlat: orgUnits }));
-    } catch (error) {
+      } catch (error) {
         console.error('Error fetching org units:', error);
         setState(prev => ({ ...prev, error: 'Failed to fetch organization units' }));
+        toast.error('Failed to fetch organization units. Please refresh the page.');
+      } finally {
+        setIsLoadingOrgUnits(false);
       }
     };
 
@@ -144,6 +155,7 @@ export default function AssessmentPage() {
           loadingProgress: 0,
           loadingMessage: ''
         }));
+        toast.success('Assessment report generated successfully!');
       }, 500);
 
       } catch (error) {
@@ -155,6 +167,7 @@ export default function AssessmentPage() {
         loadingProgress: 0,
         loadingMessage: ''
       }));
+          toast.error('Failed to generate assessment report. Please try again.');
     }
   }, [state.selectedOrgUnits, state.selectedPeriods, state.dhis2OrgUnitsFlat, manualEntriesData, preCalculatedScores]);
 
@@ -189,21 +202,26 @@ export default function AssessmentPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      
+      toast.success('Excel file exported successfully!');
 
     } catch (error) {
       console.error('Error exporting assessment to Excel:', error);
       setState(prev => ({ ...prev, error: 'Failed to export assessment to Excel' }));
+      toast.error('Failed to export Excel file. Please try again.');
     }
   };
 
   const handleExportPDF = () => {
     if (!state.assessmentData) {
       setState(prev => ({ ...prev, error: 'No assessment data to export' }));
+      toast.error('No assessment data to export');
       return;
     }
 
     // Trigger print functionality
     window.print();
+    toast.success('PDF export initiated! Check your print dialog.');
   };
 
   const handleBulkScoreCalculation = async (manualEntries: Record<number, Record<string, number | null>>) => {
@@ -228,13 +246,16 @@ export default function AssessmentPage() {
         assessmentData: updatedData 
       }));
       
+      toast.success('Scores calculated successfully for manual entries!');
+      
     } catch (error) {
       console.error('Error calculating scores:', error);
       setState(prev => ({ ...prev, error: 'Failed to calculate scores for manual entries' }));
+      toast.error('Failed to calculate scores for manual entries. Please try again.');
     }
   };
 
-  const handleSaveAssessment = async () => {
+  const handleSaveAssessment = async (name: string, isUpdate: boolean, assessmentId?: string) => {
     if (!state.assessmentData) {
       setState(prev => ({ ...prev, error: 'No assessment data to save' }));
       return;
@@ -247,30 +268,74 @@ export default function AssessmentPage() {
         return orgUnit ? (orgUnit.displayName || orgUnit.display_name || orgUnit.name || orgUnit.id) : orgUnitId;
       });
 
-      // Generate a default name for the assessment
-      const assessmentName = `Assessment_${orgUnitNames.join('_')}_${new Date().toISOString().slice(0, 10)}`;
+      // Convert assessment data from list to dictionary format expected by backend
+      let indicatorDataDict: Record<string, any> = {};
+      
+      if (Array.isArray(state.assessmentData)) {
+        // If it's a list, convert to dictionary
+        state.assessmentData.forEach((periodData, index) => {
+          if (periodData.objectives) {
+            periodData.objectives.forEach((objective: any) => {
+              if (objective.indicators) {
+                objective.indicators.forEach((indicator: any) => {
+                  indicatorDataDict[indicator.id] = {
+                    ...indicator,
+                    objective_id: objective.id,
+                    objective_name: objective.name
+                  };
+                });
+              }
+            });
+          }
+        });
+      } else {
+        // If it's already a dictionary, use it as is
+        indicatorDataDict = state.assessmentData;
+      }
 
-      await assessmentService.saveAssessment({
-        name: assessmentName,
-        org_unit_id: state.selectedOrgUnits[0], // Save first org unit as primary
-        org_unit_name: orgUnitNames[0] || state.selectedOrgUnits[0],
-        periods: state.selectedPeriods.map(p => p.name),
-        indicator_data: state.assessmentData,
-        calculated_scores: preCalculatedScores,
-        metadata: {
-          org_unit_ids: state.selectedOrgUnits,
-          org_unit_names: orgUnitNames,
-          manual_entries: manualEntriesData,
-        }
-      });
+      if (isUpdate && assessmentId) {
+        // Update existing assessment
+        await assessmentService.updateAssessment({
+          assessment_id: assessmentId,
+          name: name,
+          org_unit_id: state.selectedOrgUnits[0],
+          org_unit_name: orgUnitNames[0] || state.selectedOrgUnits[0],
+          periods: state.selectedPeriods.map(p => p.name),
+          indicator_data: indicatorDataDict,
+          calculated_scores: preCalculatedScores,
+          metadata: {
+            org_unit_ids: state.selectedOrgUnits,
+            org_unit_names: orgUnitNames,
+            manual_entries: manualEntriesData,
+          }
+        });
+        toast.success('Assessment updated successfully!');
+      } else {
+        // Save new assessment
+        await assessmentService.saveAssessment({
+          name: name,
+          org_unit_id: state.selectedOrgUnits[0],
+          org_unit_name: orgUnitNames[0] || state.selectedOrgUnits[0],
+          periods: state.selectedPeriods.map(p => p.name),
+          indicator_data: indicatorDataDict,
+          calculated_scores: preCalculatedScores,
+          metadata: {
+            org_unit_ids: state.selectedOrgUnits,
+            org_unit_names: orgUnitNames,
+            manual_entries: manualEntriesData,
+          }
+        });
+        toast.success('Assessment saved successfully!');
+      }
 
       setState(prev => ({ ...prev, error: null }));
-      // You could add a success toast here
       console.log('Assessment saved successfully');
       
     } catch (error) {
       console.error('Error saving assessment:', error);
       setState(prev => ({ ...prev, error: 'Failed to save assessment' }));
+      toast.error('Failed to save assessment. Please try again.');
+      throw error; // Re-throw to let the modal handle it
     } finally {
       setIsSaving(false);
     }
@@ -295,6 +360,94 @@ export default function AssessmentPage() {
 
   const getPeriodDisplayNames = () => {
     return state.selectedPeriods.map(period => period.displayName || period.name);
+  };
+
+  const handleOpenAssessment = async (assessmentId: string) => {
+    setIsLoadingSavedAssessment(true);
+    setState(prev => ({ ...prev, error: null }));
+    
+    try {
+      // Fetch the saved assessment data
+      const response = await assessmentService.loadAssessment({ assessment_id: assessmentId });
+      
+      // The response structure has the assessment data nested under assessment.assessment
+      const savedAssessment = response.assessment || response;
+      
+      // Extract the data from the saved assessment
+      const indicatorData = savedAssessment.indicator_data;
+      const metadata = savedAssessment.metadata || {};
+      
+      // Convert dictionary format back to list format expected by Excel table
+      let assessmentDataList: any[] = [];
+      
+      if (indicatorData && typeof indicatorData === 'object') {
+        // Group indicators by objective
+        const objectivesMap: Record<string, any> = {};
+        
+        Object.values(indicatorData).forEach((indicator: any) => {
+          const objectiveId = indicator.objective_id || indicator.objectiveId;
+          const objectiveName = indicator.objective_name || indicator.objectiveName;
+          
+          if (!objectivesMap[objectiveId]) {
+            objectivesMap[objectiveId] = {
+              id: objectiveId,
+              name: objectiveName,
+              indicators: []
+            };
+          }
+          
+          objectivesMap[objectiveId].indicators.push(indicator);
+        });
+        
+        // Convert to the format expected by Excel table
+        assessmentDataList = [{
+          objectives: Object.values(objectivesMap)
+        }];
+      }
+      
+      // Update state with the loaded assessment data
+      setState(prev => ({
+        ...prev,
+        assessmentData: assessmentDataList,
+        selectedOrgUnits: metadata.org_unit_ids || [],
+        selectedPeriods: savedAssessment.periods?.map((periodName: string) => ({
+          name: periodName,
+          displayName: periodName,
+          code: periodName
+        })) || [],
+        isDataLoaded: true,
+        isGenerating: false,
+        loadingProgress: 0,
+        loadingMessage: '',
+        error: null
+      }));
+
+      // Update manual entries and pre-calculated scores if available
+      if (metadata.manual_entries) {
+        setManualEntriesData(metadata.manual_entries);
+      }
+      if (savedAssessment.calculated_scores) {
+        setPreCalculatedScores(savedAssessment.calculated_scores);
+      }
+
+      // Set current assessment info for save/update functionality
+      setCurrentAssessmentId(savedAssessment.id);
+      setCurrentAssessmentName(savedAssessment.name);
+
+      toast.success(`Assessment "${savedAssessment.name}" loaded successfully!`);
+      console.log('Assessment loaded successfully:', savedAssessment.name);
+      
+    } catch (error) {
+      console.error('Error loading saved assessment:', error);
+      setState(prev => ({ 
+        ...prev, 
+        error: 'Failed to load saved assessment. Please try again.' 
+      }));
+      toast.error('Failed to load saved assessment. Please try again.');
+    } finally {
+      setIsLoadingSavedAssessment(false);
+      setIsOpenAssessmentModalOpen(false);
+    }
   };
 
   return (
@@ -347,24 +500,36 @@ export default function AssessmentPage() {
                       {state.selectedOrgUnits.length} selected
                     </Badge>
             </div>
-                  <Button
+                                    <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setIsOrgUnitModalOpen(true)}
+                    disabled={isLoadingOrgUnits}
                     className="w-full justify-start text-left h-auto p-3"
                   >
-                    <Building2 className="h-4 w-4 mr-2 text-[#1E8449]" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm">
-                        {state.selectedOrgUnits.length > 0 ? 'Selected Units' : 'Select Organization Units'}
-            </div>
-                      {state.selectedOrgUnits.length > 0 && (
-                        <div className="text-xs text-gray-500 truncate">
-                          {getOrgUnitDisplayNames().slice(0, 2).join(', ')}
-                          {state.selectedOrgUnits.length > 2 && ` +${state.selectedOrgUnits.length - 2} more`}
-          </div>
-        )}
-                      </div>
+                    {isLoadingOrgUnits ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin text-[#1E8449]" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">Loading...</div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="h-4 w-4 mr-2 text-[#1E8449]" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">
+                            {state.selectedOrgUnits.length > 0 ? 'Selected Units' : 'Select Organization Units'}
+                          </div>
+                          {state.selectedOrgUnits.length > 0 && (
+                            <div className="text-xs text-gray-500 truncate">
+                              {getOrgUnitDisplayNames().slice(0, 2).join(', ')}
+                              {state.selectedOrgUnits.length > 2 && ` +${state.selectedOrgUnits.length - 2} more`}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </Button>
                     </div>
 
@@ -461,23 +626,14 @@ export default function AssessmentPage() {
 
                 {/* Save Assessment Button */}
                 <Button 
-                  onClick={handleSaveAssessment}
-                  disabled={!state.isDataLoaded || state.isGenerating || isSaving}
+                  onClick={() => setIsSaveModalOpen(true)}
+                  disabled={!state.isDataLoaded || state.isGenerating}
                   variant="outline" 
                   size="sm"
                   className="w-full bg-[#1E8449]/10 border-[#1E8449]/20 text-[#1E8449] hover:bg-[#1E8449]/20"
                 >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Assessment
-                    </>
-                  )}
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Assessment
                 </Button>
 
                                     {/* Export Buttons */}
@@ -534,18 +690,14 @@ export default function AssessmentPage() {
                     )}
                   </Button>
                   <Button
-                    onClick={handleSaveAssessment}
-                    disabled={!state.isDataLoaded || state.isGenerating || isSaving}
+                    onClick={() => setIsSaveModalOpen(true)}
+                    disabled={!state.isDataLoaded || state.isGenerating}
                     variant="outline"
                     size="sm"
                     className="w-8 h-8 p-0 bg-[#1E8449]/10 border-[#1E8449]/20 text-[#1E8449]"
                     title="Save Assessment"
                   >
-                    {isSaving ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
+                    <Save className="h-4 w-4" />
                   </Button>
                       <Button 
                     onClick={handleExportExcel}
@@ -620,7 +772,28 @@ export default function AssessmentPage() {
 
         {/* Main Content */}
         <div className="flex-1 overflow-hidden">
-          {state.isGenerating ? (
+          {isLoadingSavedAssessment ? (
+            /* Loading Saved Assessment State */
+            <div className="flex items-center justify-center h-full bg-gray-50">
+              <Card className="w-96">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5 text-[#1E8449] animate-spin" />
+                    Loading Assessment
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="text-sm text-gray-600">
+                    Loading your saved assessment data...
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <Clock className="h-3 w-3" />
+                    <span>Please wait...</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : state.isGenerating ? (
             /* Loading State */
             <div className="flex items-center justify-center h-full bg-gray-50">
               <Card className="w-96">
@@ -731,11 +904,16 @@ export default function AssessmentPage() {
       <OpenAssessmentModal
         isOpen={isOpenAssessmentModalOpen}
         onClose={() => setIsOpenAssessmentModalOpen(false)}
-        onOpenAssessment={(assessmentId: string) => {
-          // Handle opening assessment by ID
-          console.log('Opening assessment:', assessmentId);
-          setIsOpenAssessmentModalOpen(false);
-        }}
+        onOpenAssessment={handleOpenAssessment}
+      />
+
+      <SaveAssessmentModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        onSave={handleSaveAssessment}
+        existingAssessmentId={currentAssessmentId || undefined}
+        existingAssessmentName={currentAssessmentName || undefined}
+        isSaving={isSaving}
       />
               </div>
               </div>
