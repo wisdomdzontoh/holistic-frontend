@@ -92,7 +92,7 @@ export default function AssessmentPage() {
       try {
         const orgUnits = await assessmentService.getOrgUnits();
         setState(prev => ({ ...prev, dhis2OrgUnitsFlat: orgUnits }));
-      } catch (error) {
+    } catch (error) {
         console.error('Error fetching org units:', error);
         setState(prev => ({ ...prev, error: 'Failed to fetch organization units' }));
         toast.error('Failed to fetch organization units. Please refresh the page.');
@@ -154,15 +154,15 @@ export default function AssessmentPage() {
         isGenerating: false,
           loadingProgress: 0,
           loadingMessage: ''
-        }));
+      }));
         toast.success('Assessment report generated successfully!');
       }, 500);
 
-      } catch (error) {
+    } catch (error) {
       console.error('Error generating report:', error);
-          setState(prev => ({ 
-            ...prev, 
-        isGenerating: false, 
+      setState(prev => ({ 
+        ...prev, 
+        isGenerating: false,
         error: 'Failed to generate assessment report',
         loadingProgress: 0,
         loadingMessage: ''
@@ -174,8 +174,8 @@ export default function AssessmentPage() {
     const handleExportExcel = async () => {
     if (!state.assessmentData) {
       setState(prev => ({ ...prev, error: 'No assessment data to export' }));
-      return;
-    }
+          return;
+        }
 
     try {
       const orgUnitNames = state.selectedOrgUnits.map(orgUnitId => {
@@ -205,7 +205,7 @@ export default function AssessmentPage() {
       
       toast.success('Excel file exported successfully!');
 
-    } catch (error) {
+      } catch (error) {
       console.error('Error exporting assessment to Excel:', error);
       setState(prev => ({ ...prev, error: 'Failed to export assessment to Excel' }));
       toast.error('Failed to export Excel file. Please try again.');
@@ -241,8 +241,8 @@ export default function AssessmentPage() {
       });
 
       // Update the assessment data with new scores
-      setState(prev => ({
-        ...prev,
+          setState(prev => ({ 
+            ...prev, 
         assessmentData: updatedData 
       }));
       
@@ -304,7 +304,7 @@ export default function AssessmentPage() {
           indicator_data: indicatorDataDict,
           calculated_scores: preCalculatedScores,
           metadata: {
-            org_unit_ids: state.selectedOrgUnits,
+        org_unit_ids: state.selectedOrgUnits,
             org_unit_names: orgUnitNames,
             manual_entries: manualEntriesData,
           }
@@ -320,7 +320,7 @@ export default function AssessmentPage() {
           indicator_data: indicatorDataDict,
           calculated_scores: preCalculatedScores,
           metadata: {
-            org_unit_ids: state.selectedOrgUnits,
+        org_unit_ids: state.selectedOrgUnits,
             org_unit_names: orgUnitNames,
             manual_entries: manualEntriesData,
           }
@@ -330,7 +330,7 @@ export default function AssessmentPage() {
 
       setState(prev => ({ ...prev, error: null }));
       console.log('Assessment saved successfully');
-      
+
     } catch (error) {
       console.error('Error saving assessment:', error);
       setState(prev => ({ ...prev, error: 'Failed to save assessment' }));
@@ -439,8 +439,8 @@ export default function AssessmentPage() {
       
     } catch (error) {
       console.error('Error loading saved assessment:', error);
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         error: 'Failed to load saved assessment. Please try again.' 
       }));
       toast.error('Failed to load saved assessment. Please try again.');
@@ -455,7 +455,7 @@ export default function AssessmentPage() {
       {/* Dashboard Header */}
       <div className="no-print">
         <DashboardHeader user={user} />
-      </div>
+          </div>
       
       {/* Main Content with Sidebar */}
       <div className="flex flex-1 overflow-hidden">
@@ -512,7 +512,7 @@ export default function AssessmentPage() {
                         <Loader2 className="h-4 w-4 mr-2 animate-spin text-[#1E8449]" />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">Loading...</div>
-                        </div>
+            </div>
                       </>
                     ) : (
                       <>
@@ -525,9 +525,9 @@ export default function AssessmentPage() {
                             <div className="text-xs text-gray-500 truncate">
                               {getOrgUnitDisplayNames().slice(0, 2).join(', ')}
                               {state.selectedOrgUnits.length > 2 && ` +${state.selectedOrgUnits.length - 2} more`}
-                            </div>
-                          )}
-                        </div>
+          </div>
+        )}
+                      </div>
                       </>
                     )}
                   </Button>
@@ -670,7 +670,7 @@ export default function AssessmentPage() {
                     <FileText className="h-4 w-4 mr-2" />
                     Open Saved
                 </Button>
-                      </div>
+            </div>
               )}
 
               {/* Collapsed Sidebar Icons */}
@@ -689,16 +689,16 @@ export default function AssessmentPage() {
                       <Play className="h-4 w-4" />
                     )}
                   </Button>
-                  <Button
+                <Button
                     onClick={() => setIsSaveModalOpen(true)}
                     disabled={!state.isDataLoaded || state.isGenerating}
-                    variant="outline"
-                    size="sm"
+                  variant="outline"
+                  size="sm"
                     className="w-8 h-8 p-0 bg-[#1E8449]/10 border-[#1E8449]/20 text-[#1E8449]"
                     title="Save Assessment"
-                  >
+                >
                     <Save className="h-4 w-4" />
-                  </Button>
+                </Button>
                       <Button 
                     onClick={handleExportExcel}
                     disabled={!state.isDataLoaded || state.isGenerating}
@@ -781,7 +781,7 @@ export default function AssessmentPage() {
                     <RefreshCw className="h-5 w-5 text-[#1E8449] animate-spin" />
                     Loading Assessment
                   </CardTitle>
-                </CardHeader>
+          </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="text-sm text-gray-600">
                     Loading your saved assessment data...
@@ -792,8 +792,8 @@ export default function AssessmentPage() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          ) : state.isGenerating ? (
+              </div>
+            ) : state.isGenerating ? (
             /* Loading State */
             <div className="flex items-center justify-center h-full bg-gray-50">
               <Card className="w-96">
@@ -808,16 +808,16 @@ export default function AssessmentPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Progress</span>
                       <span className="text-gray-900 font-medium">{state.loadingProgress}%</span>
-                  </div>
+                    </div>
                     <Progress value={state.loadingProgress} className="h-2" />
-              </div>
+                </div>
                   <div className="text-sm text-gray-600">
                     {state.loadingMessage}
-                    </div>
+              </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <Clock className="h-3 w-3" />
                     <span>This may take a few moments...</span>
-                </div>
+              </div>
                 </CardContent>
               </Card>
               </div>
