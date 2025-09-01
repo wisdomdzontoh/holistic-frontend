@@ -4,8 +4,21 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { assessmentService } from '@/lib/assessment-service';
-import { Trash2, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { 
+  Trash2, 
+  ChevronLeft, 
+  ChevronRight, 
+  ArrowUpDown, 
+  Search,
+  FileText,
+  Building2,
+  Calendar,
+  Clock,
+  Loader2,
+  RefreshCw
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SavedItem {
@@ -17,16 +30,26 @@ interface SavedItem {
   updated_at?: string;
 }
 
+interface DHIS2OrgUnit {
+  id: string;
+  name: string;
+  displayName: string;
+  level: number;
+  children?: DHIS2OrgUnit[];
+}
+
 export function OpenAssessmentModal({
   isOpen,
   onClose,
   onOpenAssessment,
   orgUnitId,
+  dhis2OrgUnitsFlat = [],
 }: {
   isOpen: boolean;
   onClose: () => void;
   onOpenAssessment: (assessmentId: string) => void;
   orgUnitId?: string;
+  dhis2OrgUnitsFlat?: DHIS2OrgUnit[];
 }) {
   const [items, setItems] = useState<SavedItem[]>([]);
   // Debounced search
@@ -41,6 +64,26 @@ export function OpenAssessmentModal({
   const [ordering, setOrdering] = useState<'name'|'-name'|'created_at'|'-created_at'>('-created_at');
   const [owner, setOwner] = useState<'mine'>('mine'); // Users can only see their own assessments
   const abortRef = useRef<AbortController | null>(null);
+
+  // Function to get organization unit display name
+  const getOrgUnitDisplayName = (orgUnitId: string): string => {
+    // Recursive function to search for org unit in nested structure
+    const findOrgUnitRecursively = (units: DHIS2OrgUnit[], targetId: string): DHIS2OrgUnit | undefined => {
+      for (const unit of units) {
+        if (unit.id === targetId) {
+          return unit;
+        }
+        if (unit.children && unit.children.length > 0) {
+          const found = findOrgUnitRecursively(unit.children, targetId);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+
+    const orgUnit = findOrgUnitRecursively(dhis2OrgUnitsFlat, orgUnitId);
+    return orgUnit ? (orgUnit.displayName || orgUnit.name) : orgUnitId;
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -96,69 +139,144 @@ export function OpenAssessmentModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl p-0 overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="px-6 pt-4">Open saved assessment</DialogTitle>
-          <p className="px-6 text-sm text-gray-600">You can only view and manage assessments you created</p>
+      <DialogContent className="max-w-6xl p-0 overflow-hidden">
+        <DialogHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200">
+          <div className="px-6 pt-6 pb-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <FileText className="h-6 w-6 text-blue-600" />
+              </div>
+              <DialogTitle className="text-2xl font-bold text-slate-800">Open Saved Assessment</DialogTitle>
+            </div>
+            <p className="text-slate-600">Browse and open your previously saved assessments</p>
+          </div>
         </DialogHeader>
-        <div className="space-y-3 px-6 pb-4">
-          <div className="flex items-center gap-2">
-            <Input placeholder="Search by name or org unit" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-            <select className="border rounded px-2 py-1" value={ordering} onChange={(e)=>setOrdering(e.target.value as any)}>
-              <option value="-created_at">Newest</option>
-              <option value="created_at">Oldest</option>
+        
+        <div className="space-y-4 px-6 py-4">
+          {/* Search and Controls */}
+          <div className="flex items-center gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input 
+                placeholder="Search assessments by name or organization unit..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <select 
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
+              value={ordering} 
+              onChange={(e)=>setOrdering(e.target.value as any)}
+            >
+              <option value="-created_at">Newest First</option>
+              <option value="created_at">Oldest First</option>
               <option value="name">Name (A-Z)</option>
               <option value="-name">Name (Z-A)</option>
             </select>
-            {/* Owner filter removed - users can only see their own assessments for security */}
-            <Button variant="outline" onClick={()=>fetchData()}>
-              <ArrowUpDown className="h-4 w-4 mr-1" /> Refresh
+            <Button 
+              variant="outline" 
+              onClick={()=>fetchData()}
+              className="border-slate-300 hover:bg-slate-50 hover:border-slate-400"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
             </Button>
           </div>
-          <div className="max-h-[420px] overflow-auto border rounded">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0">
-                <tr>
-                  <th className="text-left px-3 py-2">Name</th>
-                  <th className="text-left px-3 py-2">Org unit</th>
-                  <th className="text-left px-3 py-2">Created</th>
-                  <th className="text-left px-3 py-2">Last edited</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td className="px-3 py-3" colSpan={5}>Loading...</td></tr>
-                ) : view.length === 0 ? (
-                  <tr><td className="px-3 py-3" colSpan={5}>No saved assessments</td></tr>
-                ) : (
-                  view.map(item => (
-                    <tr key={item.id} className={`cursor-pointer hover:bg-gray-50 ${selectedId===item.id?'bg-[#1E8449]/10':''}`} onClick={() => setSelectedId(item.id)}>
-                      <td className="px-3 py-2 font-medium">{item.name}</td>
-                      <td className="px-3 py-2">{item.org_unit_name}</td>
-                      <td className="px-3 py-2">{new Date(item.created_at).toLocaleString()}</td>
-                      <td className="px-3 py-2">{item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}</td>
-                      <td className="px-3 py-2">
-                        <button
-                          title="Delete"
-                          className="ml-auto text-red-600 hover:text-red-700"
-                          onClick={(e)=>{ e.stopPropagation(); setConfirmDelete({open:true,id:item.id}); }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+
+          {/* Assessment Table */}
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="max-h-[480px] overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gradient-to-r from-slate-50 to-gray-50 sticky top-0">
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Assessment Name</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Organization Unit</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Created</th>
+                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Last Modified</th>
+                    <th className="px-4 py-3 text-right font-semibold text-slate-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center" colSpan={5}>
+                        <div className="flex items-center justify-center gap-2 text-slate-500">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          Loading assessments...
+                        </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : view.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center" colSpan={5}>
+                        <div className="text-center text-slate-500">
+                          <FileText className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                          <p className="text-lg font-medium">No saved assessments found</p>
+                          <p className="text-sm">Try adjusting your search or create a new assessment</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    view.map(item => (
+                      <tr 
+                        key={item.id} 
+                        className={`cursor-pointer transition-colors duration-200 ${
+                          selectedId === item.id 
+                            ? 'bg-blue-50 border-l-4 border-l-blue-500' 
+                            : 'hover:bg-slate-50 border-l-4 border-l-transparent'
+                        }`} 
+                        onClick={() => setSelectedId(item.id)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                            <span className="font-semibold text-slate-800">{item.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-green-600" />
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              {getOrgUnitDisplayName(item.org_unit_id)}
+                            </Badge>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Calendar className="h-4 w-4" />
+                            <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Clock className="h-4 w-4" />
+                            <span>{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : 'Never'}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            title="Delete Assessment"
+                            className="ml-auto p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                            onClick={(e)=>{ e.stopPropagation(); setConfirmDelete({open:true,id:item.id}); }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          {/* Pagination controls */}
-          <div className="flex items-center justify-between text-sm mt-2">
-            <div className="flex items-center gap-2">
-              <span>Rows per page:</span>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-600">Rows per page:</span>
               <select
-                className="border rounded px-2 py-1"
+                className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
                 value={pageSize}
                 onChange={(e)=>{ setPageSize(parseInt(e.target.value,10)); setPage(1); }}
               >
@@ -166,32 +284,40 @@ export function OpenAssessmentModal({
                 <option value={20}>20</option>
                 <option value={50}>50</option>
               </select>
-              <span className="text-gray-500">{count} total</span>
+              <span className="text-sm text-slate-500 font-medium">{count} total assessments</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
-                className="p-1 border rounded disabled:opacity-50"
+                className="p-2 border border-slate-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors duration-200"
                 onClick={()=>setPage(p=>Math.max(1,p-1))}
                 disabled={page<=1}
-                title="Previous"
+                title="Previous Page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span>
+              <span className="px-3 py-2 text-sm font-medium text-slate-700">
                 Page {page} of {totalPages}
               </span>
               <button
-                className="p-1 border rounded disabled:opacity-50"
+                className="p-2 border border-slate-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors duration-200"
                 onClick={()=>setPage(p=>Math.min(totalPages,p+1))}
                 disabled={page>=totalPages}
-                title="Next"
+                title="Next Page"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button 
+              variant="outline" 
+              onClick={onClose}
+              className="border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+            >
+              Cancel
+            </Button>
             <Button
               onClick={() => {
                 if (!selectedId) return;
@@ -199,22 +325,26 @@ export function OpenAssessmentModal({
                 onClose();
               }}
               disabled={!selectedId}
-              style={{ backgroundColor: '#154360' }}
-              className="text-white"
-            >Open</Button>
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-2"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Open Assessment
+            </Button>
           </div>
         </div>
+
+        {/* Delete Confirmation Modal */}
         <ConfirmModal
           isOpen={confirmDelete.open}
           onClose={()=>setConfirmDelete({open:false})}
-          title="Delete assessment"
-          message="Are you sure you want to delete this saved assessment? This action cannot be undone."
-          confirmText="Delete"
+          title="Delete Assessment"
+          message="Are you sure you want to delete this saved assessment? This action cannot be undone and all associated data will be permanently removed."
+          confirmText="Delete Assessment"
           onConfirm={async ()=>{
             if (!confirmDelete.id) return;
             await assessmentService.deleteAssessment({ assessment_id: confirmDelete.id });
             await fetchData();
-            toast.success('Assessment deleted');
+            toast.success('Assessment deleted successfully');
           }}
         />
       </DialogContent>

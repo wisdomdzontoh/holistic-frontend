@@ -3,42 +3,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { assessmentService } from '@/lib/assessment-service';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Target, 
-  Building2, 
-  Calendar, 
-  FileText,
-  Download, 
-  Play,
-  Settings,
-  Database,
-  BarChart3,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Filter,
-  Search,
-  ChevronRight,
-  ChevronDown,
-  FileSpreadsheet,
-  RefreshCw,
-  Loader2,
-  FileText as FileTextIcon,
-  Printer,
-  Save
-} from 'lucide-react';
+
+
 import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-modal';
 import PeriodSelectionModal from '@/components/modals/period-selection-modal';
 import { OpenAssessmentModal } from '@/components/modals/open-assessment-modal';
 import { SaveAssessmentModal } from '@/components/modals/save-assessment-modal';
 import ExcelTable from '@/components/assessment/excel-table';
+import AssessmentSidebar from '@/components/assessment/assessment-sidebar';
+import AssessmentHeader from '@/components/assessment/assessment-header';
+import AssessmentMainContent from '@/components/assessment/assessment-main-content';
 import { DashboardHeader } from '@/components/dashboard/dashboard-header';
 import { toast } from 'sonner';
 
@@ -84,6 +58,9 @@ export default function AssessmentPage() {
   const [isLoadingOrgUnits, setIsLoadingOrgUnits] = useState(false);
   const [currentAssessmentId, setCurrentAssessmentId] = useState<string | null>(null);
   const [currentAssessmentName, setCurrentAssessmentName] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<string>('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Fetch org units on component mount
   useEffect(() => {
@@ -171,11 +148,40 @@ export default function AssessmentPage() {
     }
   }, [state.selectedOrgUnits, state.selectedPeriods, state.dhis2OrgUnitsFlat, manualEntriesData, preCalculatedScores]);
 
+  // Function to collect manual entries from the Excel table
+  const collectManualEntries = (): Record<number, Record<string, number | null>> => {
+    const manualEntries: Record<number, Record<string, number | null>> = {};
+    
+    if (state.assessmentData && state.assessmentData.length > 0) {
+      state.assessmentData[0].objectives.forEach((objective: any) => {
+        objective.indicators.forEach((indicator: any) => {
+          if (indicator.data_values) {
+            Object.entries(indicator.data_values).forEach(([period, dataValue]: [string, any]) => {
+              // Check if this is a manual entry (has manual_override and it's not null)
+              if (dataValue && dataValue.manual_override !== undefined && dataValue.manual_override !== null) {
+                if (!manualEntries[indicator.id]) {
+                  manualEntries[indicator.id] = {};
+                }
+                // Use the period as the key (this could be period name or code)
+                manualEntries[indicator.id][period] = dataValue.manual_override;
+              }
+            });
+          }
+        });
+      });
+    }
+    
+    return manualEntries;
+  };
+
     const handleExportExcel = async () => {
     if (!state.assessmentData) {
       setState(prev => ({ ...prev, error: 'No assessment data to export' }));
           return;
         }
+
+      setIsExporting(true);
+      setExportProgress('Preparing export...');
 
     try {
       const orgUnitNames = state.selectedOrgUnits.map(orgUnitId => {
@@ -183,14 +189,21 @@ export default function AssessmentPage() {
         return orgUnit ? (orgUnit.displayName || orgUnit.name || orgUnitId) : orgUnitId;
       });
 
+        setExportProgress('Generating Excel file...');
+
+        // Collect manual entries from the assessment data
+        const manualEntries = collectManualEntries();
+
       const exportResult = await assessmentService.exportHolisticExcelWithFilename({
           org_unit_ids: state.selectedOrgUnits,
         org_unit_names: orgUnitNames,
         periods: state.selectedPeriods,
         include_scores: true,
-        manual_entries: manualEntriesData,
+          manual_entries: manualEntries,
         pre_calculated_scores: preCalculatedScores,
       });
+
+        setExportProgress('Preparing download...');
 
       // Create download link with the correct filename from backend
       const url = window.URL.createObjectURL(exportResult.blob);
@@ -205,10 +218,13 @@ export default function AssessmentPage() {
       
       toast.success('Excel file exported successfully!');
 
-      } catch (error) {
+      } catch (error: any) {
       console.error('Error exporting assessment to Excel:', error);
       setState(prev => ({ ...prev, error: 'Failed to export assessment to Excel' }));
       toast.error('Failed to export Excel file. Please try again.');
+      } finally {
+        setIsExporting(false);
+        setExportProgress('');
     }
   };
 
@@ -343,18 +359,42 @@ export default function AssessmentPage() {
 
   const getOrgUnitDisplayNames = () => {
     return state.selectedOrgUnits.map(id => {
-      const orgUnit = state.dhis2OrgUnitsFlat.find(ou => ou.id === id);
+      // Recursive function to search for org unit in nested structure
+      const findOrgUnitRecursively = (units: any[], targetId: string): any | undefined => {
+        for (const unit of units) {
+          if (unit.id === targetId) {
+            return unit;
+          }
+          if (unit.children && unit.children.length > 0) {
+            const found = findOrgUnitRecursively(unit.children, targetId);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+
+      const orgUnit = findOrgUnitRecursively(state.dhis2OrgUnitsFlat, id);
+      
       // Debug: Log the org unit structure
       if (orgUnit) {
-        console.log('Org unit structure:', orgUnit);
+        console.log('Org unit found:', { id, orgUnit });
+        console.log('Available properties:', Object.keys(orgUnit));
+        console.log('displayName:', orgUnit.displayName);
+        console.log('name:', orgUnit.name);
+        console.log('display_name:', orgUnit.display_name);
+      } else {
+        console.log('Org unit not found for ID:', id);
+        console.log('Available org units:', state.dhis2OrgUnitsFlat);
       }
+      
       // Try different possible property names for the display name
       return orgUnit ? (
         orgUnit.displayName || 
-        orgUnit.display_name || 
         orgUnit.name || 
-        orgUnit.id
-      ) : id;
+        orgUnit.display_name || 
+        orgUnit.org_unit_name ||
+        `Org Unit ${id.slice(-4)}` // Fallback: show last 4 chars of ID
+      ) : `Org Unit ${id.slice(-4)}`;
     });
   };
 
@@ -460,420 +500,53 @@ export default function AssessmentPage() {
       {/* Main Content with Sidebar */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar - Configuration Panel */}
-        <div className={`no-print bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
-          state.sidebarExpanded ? 'w-80' : 'w-16'
-        }`}>
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          {state.sidebarExpanded && (
-            <div className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-[#1E8449]" />
-              <span className="font-semibold text-gray-900">Assessment Config</span>
-          </div>
-        )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setState(prev => ({ ...prev, sidebarExpanded: !prev.sidebarExpanded }))}
-            className="h-8 w-8 p-0"
-          >
-            {state.sidebarExpanded ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </div>
-
-        {/* Sidebar Content */}
-        <ScrollArea className="flex-1 overflow-y-auto">
-          <div className="p-4 space-y-6 pb-6">
-            {/* Configuration Section */}
-            {state.sidebarExpanded && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Settings className="h-4 w-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">Configuration</span>
-              </div>
-
-                {/* Organization Units */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Organization Units</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {state.selectedOrgUnits.length} selected
-                    </Badge>
-            </div>
-                                    <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsOrgUnitModalOpen(true)}
-                    disabled={isLoadingOrgUnits}
-                    className="w-full justify-start text-left h-auto p-3"
-                  >
-                    {isLoadingOrgUnits ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin text-[#1E8449]" />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">Loading...</div>
-            </div>
-                      </>
-                    ) : (
-                      <>
-                        <Building2 className="h-4 w-4 mr-2 text-[#1E8449]" />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">
-                            {state.selectedOrgUnits.length > 0 ? 'Selected Units' : 'Select Organization Units'}
-                          </div>
-                          {state.selectedOrgUnits.length > 0 && (
-                            <div className="text-xs text-gray-500 truncate">
-                              {getOrgUnitDisplayNames().slice(0, 2).join(', ')}
-                              {state.selectedOrgUnits.length > 2 && ` +${state.selectedOrgUnits.length - 2} more`}
-          </div>
-        )}
-                      </div>
-                      </>
-                    )}
-                  </Button>
-                    </div>
-
-                {/* Periods */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Periods</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {state.selectedPeriods.length} selected
-                </Badge>
-                    </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsPeriodModalOpen(true)}
-                    className="w-full justify-start text-left h-auto p-3"
-                  >
-                    <Calendar className="h-4 w-4 mr-2 text-[#1E8449]" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm">
-                        {state.selectedPeriods.length > 0 ? 'Selected Periods' : 'Select Periods'}
-                      </div>
-                      {state.selectedPeriods.length > 0 && (
-                        <div className="text-xs text-gray-500 truncate">
-                          {getPeriodDisplayNames().slice(0, 2).join(', ')}
-                          {state.selectedPeriods.length > 2 && ` +${state.selectedPeriods.length - 2} more`}
-                  </div>
-                )}
-                    </div>
-                  </Button>
-              </div>
-
-                {/* Indicator Source Filter */}
-                <div className="space-y-2">
-                  <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Data Source</span>
-                  <div className="flex gap-1">
-                  <Button 
-                    size="sm"
-                      variant={indicatorSourceFilter==='all'?'default':'outline'}
-                      className={indicatorSourceFilter==='all'? 'bg-[#1E8449] text-white hover:bg-[#1E8449]/90 text-xs':'border-gray-300 text-gray-700 hover:bg-gray-50 text-xs'}
-                      onClick={()=>setIndicatorSourceFilter('all')}
-                    >
-                      All
-                  </Button>
-                    <Button
-                      size="sm" 
-                      variant={indicatorSourceFilter==='dhis2'?'default':'outline'}
-                      className={indicatorSourceFilter==='dhis2'? 'bg-blue-900 text-white hover:bg-blue-800 text-xs':'border-gray-300 text-gray-700 hover:bg-gray-50 text-xs'}
-                      onClick={()=>setIndicatorSourceFilter('dhis2')}
-                    >
-                      DHIS2
-                    </Button>
-                    <Button
-                      size="sm" 
-                      variant={indicatorSourceFilter==='manual'?'default':'outline'}
-                      className={indicatorSourceFilter==='manual'? 'bg-[#C0392B] text-white hover:bg-[#C0392B]/90 text-xs':'border-gray-300 text-gray-700 hover:bg-gray-50 text-xs'}
-                      onClick={()=>setIndicatorSourceFilter('manual')}
-                    >
-                      Manual
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <Separator />
-
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              {state.sidebarExpanded && (
-                <div className="space-y-2">
-                  <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Actions</span>
-                
-                {/* Generate Report Button */}
-                <Button 
-                  onClick={handleGenerateReport}
-                  disabled={state.isGenerating || state.selectedPeriods.length === 0 || state.selectedOrgUnits.length === 0}
-                  size="sm"
-                    className="w-full bg-[#1E8449] text-white hover:bg-[#1E8449]/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Fetch DHIS2 data and calculate scores for selected periods and org units"
-                >
-                  {state.isGenerating ? (
-                    <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
-                    </>
-                  ) : (
-                    <>
-                        <Play className="h-4 w-4 mr-2" />
-                      Generate Report
-                    </>
-                  )}
-                </Button>
-
-                {/* Save Assessment Button */}
-                <Button 
-                  onClick={() => setIsSaveModalOpen(true)}
-                  disabled={!state.isDataLoaded || state.isGenerating}
-                  variant="outline" 
-                  size="sm"
-                  className="w-full bg-[#1E8449]/10 border-[#1E8449]/20 text-[#1E8449] hover:bg-[#1E8449]/20"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Assessment
-                </Button>
-
-                                    {/* Export Buttons */}
-                  <div className="space-y-2">
-                <Button 
-                      onClick={handleExportExcel}
-                      disabled={!state.isDataLoaded || state.isGenerating}
-                  variant="outline" 
-                  size="sm"
-                      className="w-full"
-                >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Export Excel
-                </Button>
-                <Button 
-                      onClick={handleExportPDF}
-                      disabled={!state.isDataLoaded || state.isGenerating}
-                  variant="outline" 
-                  size="sm"
-                      className="w-full"
-                >
-                      <Printer className="h-4 w-4 mr-2" />
-                      Export PDF
-                </Button>
-              </div>
-              
-                  {/* Open Saved Assessment Button */}
-                <Button
-                    onClick={() => setIsOpenAssessmentModalOpen(true)}
-                  variant="outline"
-                  size="sm"
-                    className="w-full"
-                >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Open Saved
-                </Button>
-            </div>
-              )}
-
-              {/* Collapsed Sidebar Icons */}
-              {!state.sidebarExpanded && (
-                    <div className="space-y-2">
-                <Button
-                    onClick={handleGenerateReport}
-                    disabled={state.isGenerating || state.selectedPeriods.length === 0 || state.selectedOrgUnits.length === 0}
-                  size="sm"
-                    className="w-8 h-8 p-0 bg-[#1E8449] text-white hover:bg-[#1E8449]/90"
-                    title="Generate Report"
-                  >
-                    {state.isGenerating ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
-                  </Button>
-                <Button
-                    onClick={() => setIsSaveModalOpen(true)}
-                    disabled={!state.isDataLoaded || state.isGenerating}
-                  variant="outline"
-                  size="sm"
-                    className="w-8 h-8 p-0 bg-[#1E8449]/10 border-[#1E8449]/20 text-[#1E8449]"
-                    title="Save Assessment"
-                >
-                    <Save className="h-4 w-4" />
-                </Button>
-                      <Button 
-                    onClick={handleExportExcel}
-                    disabled={!state.isDataLoaded || state.isGenerating}
-                    variant="outline"
-                        size="sm" 
-                    className="w-8 h-8 p-0"
-                    title="Export Excel"
-                      >
-                    <FileSpreadsheet className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                    onClick={handleExportPDF}
-                    disabled={!state.isDataLoaded || state.isGenerating}
-                    variant="outline"
-                        size="sm" 
-                    className="w-8 h-8 p-0"
-                    title="Export PDF"
-                      >
-                    <Printer className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                    onClick={() => setIsOpenAssessmentModalOpen(true)}
-                    variant="outline"
-                        size="sm" 
-                    className="w-8 h-8 p-0"
-                    title="Open Saved"
-                      >
-                    <FileText className="h-4 w-4" />
-                      </Button>
-              </div>
-                  )}
-            </div>
-          </div>
-        </ScrollArea>
-        </div>
+        <AssessmentSidebar
+          sidebarExpanded={state.sidebarExpanded}
+          onToggleSidebar={() => setState(prev => ({ ...prev, sidebarExpanded: !prev.sidebarExpanded }))}
+          selectedOrgUnits={state.selectedOrgUnits}
+          selectedPeriods={state.selectedPeriods}
+          dhis2OrgUnitsFlat={state.dhis2OrgUnitsFlat}
+          isLoadingOrgUnits={isLoadingOrgUnits}
+          isGenerating={state.isGenerating}
+          isDataLoaded={state.isDataLoaded}
+          isExporting={isExporting}
+          exportProgress={exportProgress}
+          indicatorSourceFilter={indicatorSourceFilter}
+          onIndicatorSourceFilterChange={setIndicatorSourceFilter}
+          onOrgUnitModalOpen={() => setIsOrgUnitModalOpen(true)}
+          onPeriodModalOpen={() => setIsPeriodModalOpen(true)}
+          onSaveModalOpen={() => setIsSaveModalOpen(true)}
+          onExportExcel={handleExportExcel}
+          onExportPDF={handleExportPDF}
+          onOpenAssessmentModal={() => setIsOpenAssessmentModalOpen(true)}
+          onGenerateReport={handleGenerateReport}
+          getOrgUnitDisplayNames={getOrgUnitDisplayNames}
+          getPeriodDisplayNames={getPeriodDisplayNames}
+        />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Configuration Bar */}
-        <div className="no-print bg-white border-b border-gray-200 p-4">
-            <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-700">Columns:</span>
-                <Badge variant="outline" className="text-xs">
-                      <Database className="h-3 w-3 mr-1" />
-                  Data
-                </Badge>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-700">Rows:</span>
-                <Badge variant="outline" className="text-xs">
-                  <Calendar className="h-3 w-3 mr-1" />
-                  Period {state.selectedPeriods.length > 0 ? state.selectedPeriods.length : '0'}
-                </Badge>
-                </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-700">Filter:</span>
-                <Badge variant="outline" className="text-xs">
-                  <Building2 className="h-3 w-3 mr-1" />
-                  Org Unit {state.selectedOrgUnits.length > 0 ? state.selectedOrgUnits.length : '0'}
-                </Badge>
-                    </div>
-                </div>
-            <div className="flex items-center space-x-2">
-              <ChevronRight className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-500">Assessment Results</span>
-              </div>
-            </div>
-        </div>
+        <AssessmentHeader
+          selectedOrgUnits={state.selectedOrgUnits}
+          selectedPeriods={state.selectedPeriods}
+          indicatorSourceFilter={indicatorSourceFilter}
+        />
 
         {/* Main Content */}
-        <div className="flex-1 overflow-hidden">
-          {isLoadingSavedAssessment ? (
-            /* Loading Saved Assessment State */
-            <div className="flex items-center justify-center h-full bg-gray-50">
-              <Card className="w-96">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <RefreshCw className="h-5 w-5 text-[#1E8449] animate-spin" />
-                    Loading Assessment
-                  </CardTitle>
-          </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="text-sm text-gray-600">
-                    Loading your saved assessment data...
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <Clock className="h-3 w-3" />
-                    <span>Please wait...</span>
-                  </div>
-                </CardContent>
-              </Card>
-              </div>
-            ) : state.isGenerating ? (
-            /* Loading State */
-            <div className="flex items-center justify-center h-full bg-gray-50">
-              <Card className="w-96">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <RefreshCw className="h-5 w-5 text-[#1E8449] animate-spin" />
-                    Generating Assessment
-                  </CardTitle>
-          </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Progress</span>
-                      <span className="text-gray-900 font-medium">{state.loadingProgress}%</span>
-                    </div>
-                    <Progress value={state.loadingProgress} className="h-2" />
-                </div>
-                  <div className="text-sm text-gray-600">
-                    {state.loadingMessage}
-              </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <Clock className="h-3 w-3" />
-                    <span>This may take a few moments...</span>
-              </div>
-                </CardContent>
-              </Card>
-              </div>
-          ) : !state.isDataLoaded ? (
-            /* Getting Started State */
-            <div className="flex items-center justify-center h-full bg-gray-50">
-              <Card className="w-96">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Target className="h-5 w-5 text-[#1E8449]" />
-                    Getting Started
-                  </CardTitle>
-          </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3 text-sm text-gray-600">
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 bg-[#1E8449] rounded-full mt-2 flex-shrink-0"></div>
-                      <span>All configuration options are available in the left sidebar</span>
-              </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 bg-[#1E8449] rounded-full mt-2 flex-shrink-0"></div>
-                      <span>Select organization units and periods to begin</span>
-              </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-1.5 h-1.5 bg-[#1E8449] rounded-full mt-2 flex-shrink-0"></div>
-                      <span>Click "Generate Report" to fetch data and calculate scores</span>
-                    </div>
-                </div>
-                  {state.error && (
-                    <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
-                      <AlertCircle className="h-4 w-4 text-red-600" />
-                      <span className="text-sm text-red-700">{state.error}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        </div>
-          ) : (
-            /* Assessment Data Display */
-            <div className="h-full overflow-auto">
-              <ExcelTable
-                multiPeriodData={state.assessmentData}
+        <AssessmentMainContent
+          isLoadingSavedAssessment={isLoadingSavedAssessment}
+          isGenerating={state.isGenerating}
+          isDataLoaded={state.isDataLoaded}
+          assessmentData={state.assessmentData}
             selectedPeriods={state.selectedPeriods}
-                onCellEdit={async (indicatorId: number, period: string, value: string) => {
-                  // Handle cell edit
-                  console.log('Cell edit:', indicatorId, period, value);
-                }}
-                onScoreChange={(indicatorId: number, score: string) => {
-                  // Handle score change
-                  console.log('Score change:', indicatorId, score);
-                }}
+          loadingProgress={state.loadingProgress}
+          loadingMessage={state.loadingMessage}
+          error={state.error}
+          indicatorSourceFilter={indicatorSourceFilter}
+          isExporting={isExporting}
                 onBulkScoreCalculation={handleBulkScoreCalculation}
               />
-            </div>
-            )}
-          </div>
         </div>
         </div>
 
@@ -905,6 +578,7 @@ export default function AssessmentPage() {
         isOpen={isOpenAssessmentModalOpen}
         onClose={() => setIsOpenAssessmentModalOpen(false)}
         onOpenAssessment={handleOpenAssessment}
+        dhis2OrgUnitsFlat={state.dhis2OrgUnitsFlat}
       />
 
       <SaveAssessmentModal

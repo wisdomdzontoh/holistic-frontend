@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Database, Edit3 } from 'lucide-react';
+import { Database, Edit3, Calculator, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import { AssessmentData, Period } from '@/lib/assessment-service';
 
 interface ExcelTableProps {
@@ -17,12 +17,14 @@ interface ExcelTableProps {
   onRemarksChange?: (indicatorId: number, remarks: string) => void;
   onMilestoneRemarksChange?: (objectiveId: number, remarks: string) => void;
   onBulkScoreCalculation?: (manualEntries: Record<number, Record<string, number | null>>) => Promise<void>;
+  isExporting?: boolean;
 }
 
 interface CellData {
   value: string;
   isEditable: boolean;
   isDHIS2Data: boolean;
+  isManualEntry?: boolean;
 }
 
 
@@ -35,7 +37,8 @@ export default function ExcelTable({
   onMilestoneScoreChange,
   onRemarksChange,
   onMilestoneRemarksChange,
-  onBulkScoreCalculation
+  onBulkScoreCalculation,
+  isExporting
 }: ExcelTableProps) {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
   const [hasManualEntries, setHasManualEntries] = useState(false);
@@ -70,11 +73,13 @@ export default function ExcelTable({
               // Check if this is DHIS2 data (has dhis2_uid) or manual data
               const isDHIS2Data = !!indicator.dhis2_uid;
               const hasValue = dataValue && dataValue.value !== null && dataValue.value !== undefined;
+              const isManualEntry = dataValue && dataValue.manual_override !== null && dataValue.manual_override !== undefined;
               
               newCellData[cellKey] = {
                 value: hasValue && dataValue.value !== null ? dataValue.value.toString() : '',
                 isEditable: !isDHIS2Data, // Editable if not DHIS2 data
-                isDHIS2Data: isDHIS2Data
+                isDHIS2Data: isDHIS2Data,
+                isManualEntry: isManualEntry
               };
             });
             
@@ -292,6 +297,47 @@ export default function ExcelTable({
     return 'bg-red-50';
   };
 
+  const getPrintRowClass = (type: string) => {
+    if (isExporting) return ''; // No print styles when exporting
+    switch (type) {
+      case 'milestone':
+        return 'print-row-milestone';
+      case 'objective':
+        return 'print-row-objective';
+      default:
+        return '';
+    }
+  };
+
+  const getPrintChangeClass = (val?: string) => {
+    if (!val) return '';
+    const n = parseFloat(val);
+    if (isNaN(n)) return '';
+    if (n > 0) return 'print-change-positive';
+    if (n < 0) return 'print-change-negative';
+    return 'print-change-neutral';
+  };
+
+  const getPrintGapClass = (val?: string) => {
+    if (!val) return '';
+    const n = Math.abs(parseFloat(val));
+    if (isNaN(n)) return '';
+    if (n <= 10) return 'print-gap-good';
+    if (n <= 40) return 'print-gap-warning';
+    return 'print-gap-poor';
+  };
+
+  const getPrintScoreClass = (score: string) => {
+    const numScore = parseFloat(score);
+    if (isNaN(numScore)) return '';
+    if (numScore >= 2) return 'print-score-2';
+    if (numScore >= 1) return 'print-score-1';
+    if (numScore === 0) return 'print-score-0';
+    if (numScore === -1) return 'print-score-neg1';
+    if (numScore === -2) return 'print-score-neg2';
+    return '';
+  };
+
   if (!multiPeriodData || multiPeriodData.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
@@ -301,44 +347,135 @@ export default function ExcelTable({
   }
 
   return (
-    <div className="overflow-x-auto overflow-y-auto max-h-full print-table-container">
-      {/* Print Header - Only visible when printing */}
-      <div className="hidden print:block print:mb-4 print:text-center">
-        <h1 className="print:text-2xl print:font-bold print:mb-2">Holistic Assessment Report</h1>
-        <p className="print:text-sm print:text-gray-600">
-          Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
-        </p>
-      </div>
-      
-      {/* Manual Scoring Controls - Hidden when printing */}
-      <div className="no-print mb-4 flex justify-between items-center">
-        <div className="text-sm text-gray-600">
-          {hasManualEntries ? (
-            <span className="text-green-600">✓ Manual entries detected</span>
-          ) : (
-            <span>Enter values in manual indicator cells to calculate scores</span>
-          )}
+    <div className="relative">
+      {/* Print Styles for Color Coding */}
+      <style jsx>{`
+        @media print {
+          /* Score Color Coding for Print */
+          .print-score-2 { background-color: #548235 !important; color: white !important; }
+          .print-score-1 { background-color: #A9D08E !important; color: black !important; }
+          .print-score-0 { background-color: #FFFF00 !important; color: black !important; }
+          .print-score-neg1 { background-color: #FFC7CE !important; color: black !important; }
+          .print-score-neg2 { background-color: #FF0000 !important; color: white !important; }
+          
+          /* Change Background Colors for Print */
+          .print-change-positive { background-color: #d1fae5 !important; }
+          .print-change-neutral { background-color: #fef3c7 !important; }
+          .print-change-negative { background-color: #fee2e2 !important; }
+          
+          /* Gap Background Colors for Print */
+          .print-gap-good { background-color: #d1fae5 !important; }
+          .print-gap-warning { background-color: #fef3c7 !important; }
+          .print-gap-poor { background-color: #fee2e2 !important; }
+          
+          /* Row Background Colors for Print */
+          .print-row-objective { background-color: #fed7aa !important; }
+          .print-row-milestone { background-color: #fef3c7 !important; border-left: 4px solid #f59e0b !important; }
+          
+          /* Table Styling for Print */
+          .print-table {
+            border-collapse: collapse !important;
+            width: 100% !important;
+            font-size: 10px !important;
+            line-height: 1.2 !important;
+          }
+          
+          .print-table th,
+          .print-table td {
+            border: 1px solid #d1d5db !important;
+            padding: 4px 6px !important;
+            text-align: center !important;
+            vertical-align: middle !important;
+          }
+          
+          .print-table th {
+            background-color: #154360 !important;
+            color: white !important;
+            font-weight: bold !important;
+            font-size: 9px !important;
+          }
+          
+          /* Header Styling for Print */
+          .print-header {
+            text-align: center !important;
+            margin-bottom: 20px !important;
+            page-break-after: avoid !important;
+          }
+          
+          .print-header h1 {
+            font-size: 24px !important;
+            font-weight: bold !important;
+            margin-bottom: 8px !important;
+            color: #1f2937 !important;
+          }
+          
+          .print-header p {
+            font-size: 12px !important;
+            color: #6b7280 !important;
+            margin: 0 !important;
+          }
+          
+          /* Ensure proper page breaks */
+          .print-table tr {
+            page-break-inside: avoid !important;
+          }
+          
+          /* Hide non-printable elements */
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div className="overflow-x-auto overflow-y-auto max-h-full print-table-container">
+        {/* Print Header - Only visible when printing */}
+        <div className="hidden print:block print-header">
+          <h1>Holistic Assessment Report</h1>
+          <p>
+            Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
+          </p>
         </div>
-        {hasManualEntries && onBulkScoreCalculation && (
-          <button
-            onClick={handleBulkScoreCalculation}
-            disabled={isCalculatingScores}
-            className="px-4 py-2 bg-[#1E8449] text-white rounded-md hover:bg-[#1E8449]/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isCalculatingScores ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Calculating Scores...
-              </>
-            ) : (
-              <>
-                <span>🚀</span>
-                Calculate Scores
-              </>
+      
+        {/* Manual Scoring Controls - Hidden when printing */}
+        <div className="no-print mb-6 p-4 bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200 rounded-lg shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                {hasManualEntries ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <span className="text-green-700 font-medium">Manual entries detected</span>
+                  </>
+                ) : (
+                  <>
+                    <Info className="h-5 w-5 text-blue-600" />
+                    <span className="text-gray-700">Enter values in manual indicator cells to calculate scores</span>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {hasManualEntries && onBulkScoreCalculation && (
+              <button
+                onClick={handleBulkScoreCalculation}
+                disabled={isCalculatingScores}
+                className="px-6 py-3 bg-gradient-to-r from-[#1E8449] to-[#27AE60] text-white rounded-lg hover:from-[#27AE60] hover:to-[#2ECC71] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                {isCalculatingScores ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Calculating Scores...</span>
+                  </>
+                ) : (
+                  <>
+                    <Calculator className="w-5 h-5" />
+                    <span>Calculate Scores</span>
+                  </>
+                )}
+              </button>
             )}
-          </button>
-        )}
-      </div>
+          </div>
+        </div>
       
       <table className="w-full border-collapse border border-gray-300 text-sm print-table">
         <thead>
@@ -376,7 +513,7 @@ export default function ExcelTable({
           {multiPeriodData[0]?.objectives.map((objective, objIndex) => (
             <React.Fragment key={objective.id}>
               {/* Objective Row */}
-              <tr className={getRowBackground('objective')}>
+              <tr className={`${getRowBackground('objective')} ${getPrintRowClass('objective')}`}>
                 <td className="border border-gray-300 px-2 py-2 font-medium" colSpan={7 + selectedPeriods.length}>
                   {objective.name}
                 </td>
@@ -450,19 +587,20 @@ export default function ExcelTable({
                             )}
                           </div>
                         )}
+
                       </td>
                     );
                   })}
                   
                               {/* Change column */}
-            <td className={`border border-gray-300 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
+            <td className={`border border-gray-300 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))} ${getPrintChangeClass((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
               <div className="text-xs text-center">
                 {cellData[`${indicator.id}_change`]?.value || ''}
               </div>
             </td>
             
             {/* P-T Gap Analysis column */}
-            <td className={`border border-gray-300 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
+            <td className={`border border-gray-300 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))} ${getPrintGapClass((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
               <div className="text-xs text-center">
                 {cellData[`${indicator.id}_gap`]?.value || ''}
               </div>
@@ -476,7 +614,7 @@ export default function ExcelTable({
                   </td>
                   
                   {/* Assessed score column */}
-                  <td className="border border-gray-300 px-1 py-1">
+                  <td className={`border border-gray-300 px-1 py-1 ${getPrintScoreClass(cellData[`${indicator.id}_score`]?.value || '-2.00')}`}>
                     {indicator.score?.isLoading ? (
                       <div className="h-6 text-xs text-center flex items-center justify-center" style={{ 
                         backgroundColor: '#6c757d',
@@ -520,7 +658,7 @@ export default function ExcelTable({
               ))}
               
               {/* Milestone row with score input */}
-              <tr className={getRowBackground('milestone')}>
+              <tr className={`${getRowBackground('milestone')} ${getPrintRowClass('milestone')}`}>
                 <td className="border border-gray-300 px-2 py-2 font-medium">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -579,72 +717,42 @@ export default function ExcelTable({
                 </td>
                 
                 {/* Milestone score dropdown - properly aligned */}
-                <td className="border border-gray-300 px-1 py-1">
-                  {objective.milestone ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="w-full relative">
-                          <Select
-                            value={objective.milestone.score?.toString() || '-2'}
-                            onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
-                          >
-                            <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-[#1E8449] font-bold w-full cursor-help" style={{ 
-                              backgroundColor: getScoreColor(`${objective.milestone.score || -2}.00`),
-                              color: 'black'
-                            }}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="-2">-2</SelectItem>
-                              <SelectItem value="-1">-1</SelectItem>
-                              <SelectItem value="0">0</SelectItem>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs p-3">
-                        <div className="space-y-2">
-                          <div className="font-semibold text-sm text-blue-900">MS Score Guidelines</div>
-                          <div className="text-xs space-y-1">
-                            <div className="flex items-start gap-2">
-                              <span className="font-bold text-green-600">+2:</span>
-                              <span>Evidence provided by relevant institution on complete realization of the milestone</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <span className="font-bold text-yellow-600">0:</span>
-                              <span>Evidence that milestone implementation has started but not yet achieved</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <span className="font-bold text-red-600">-2:</span>
-                              <span>Otherwise (no evidence or incomplete implementation)</span>
-                            </div>
-                          </div>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <div className="text-xs text-center text-gray-400">
-                      N/A
-                    </div>
-                  )}
+                <td className={`border border-gray-300 px-1 py-1 ${getPrintScoreClass(`${objective.milestone?.score || -2}.00`)}`}>
+                  <Select
+                    value={objective.milestone?.score?.toString() || '-2'}
+                    onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
+                  >
+                    <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-[#1E8449] font-bold" style={{ 
+                      backgroundColor: getScoreColor(`${objective.milestone?.score || -2}.00`),
+                      color: 'black'
+                    }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="-2">-2</SelectItem>
+                      <SelectItem value="-1">-1</SelectItem>
+                      <SelectItem value="0">0</SelectItem>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="2">2</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </td>
                 
-                                 {/* Remarks column for milestone - properly aligned */}
-                 <td className="border border-gray-300 px-1 py-1">
-                   <Input
-                     className="h-6 text-xs border-0 p-1"
-                     placeholder="Add remarks"
-                     value={cellData[`milestone_${objective.id}_remarks`]?.value || ''}
-                     onChange={(e) => handleMilestoneRemarksChange(objective.id, e.target.value)}
-                   />
-                 </td>
+                {/* Milestone remarks column */}
+                <td className="border border-gray-300 px-1 py-1">
+                  <Input
+                    className="h-6 text-xs border-0 p-1"
+                    placeholder="Add remarks"
+                    value={cellData[`milestone_${objective.id}_remarks`]?.value || ''}
+                    onChange={(e) => handleMilestoneRemarksChange(objective.id, e.target.value)}
+                  />
+                </td>
               </tr>
             </React.Fragment>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
-} 
+}
