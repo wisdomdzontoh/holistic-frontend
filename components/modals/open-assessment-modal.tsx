@@ -139,8 +139,8 @@ export function OpenAssessmentModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl p-0 overflow-hidden">
-        <DialogHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200">
+      <DialogContent className="max-w-6xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200 flex-shrink-0">
           <div className="px-6 pt-6 pb-4">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-blue-100 rounded-lg">
@@ -152,7 +152,7 @@ export function OpenAssessmentModal({
           </div>
         </DialogHeader>
         
-        <div className="space-y-4 px-6 py-4">
+        <div className="flex-1 overflow-y-auto space-y-4 px-6 py-4 min-h-0">
           {/* Search and Controls */}
           <div className="flex items-center gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
             <div className="relative flex-1">
@@ -186,7 +186,7 @@ export function OpenAssessmentModal({
 
           {/* Assessment Table */}
           <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-            <div className="max-h-[480px] overflow-auto">
+            <div className="overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gradient-to-r from-slate-50 to-gray-50 sticky top-0">
                   <tr className="border-b border-slate-200">
@@ -308,29 +308,29 @@ export function OpenAssessmentModal({
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-2">
-            <Button 
-              variant="outline" 
-              onClick={onClose}
-              className="border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!selectedId) return;
-                onOpenAssessment(selectedId);
-                onClose();
-              }}
-              disabled={!selectedId}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-2"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Open Assessment
-            </Button>
-          </div>
+        {/* Action Buttons - Fixed at bottom */}
+        <div className="flex justify-end gap-3 pt-4 px-6 pb-4 border-t bg-background flex-shrink-0">
+          <Button 
+            variant="outline" 
+            onClick={onClose}
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (!selectedId) return;
+              onOpenAssessment(selectedId);
+              onClose();
+            }}
+            disabled={!selectedId}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-2"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            Open Assessment
+          </Button>
         </div>
 
         {/* Delete Confirmation Modal */}

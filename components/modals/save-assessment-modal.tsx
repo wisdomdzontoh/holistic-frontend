@@ -65,8 +65,8 @@ export function SaveAssessmentModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[50vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             {saveMode === 'update' ? (
               <>
@@ -82,7 +82,7 @@ export function SaveAssessmentModal({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-2">
           {/* Save Mode Selection */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Save Mode</Label>
@@ -130,43 +130,43 @@ export function SaveAssessmentModal({
               {error}
             </div>
           )}
+        </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-2 pt-4">
-            <Button
-              variant="outline"
-              onClick={handleClose}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={isSaving || !assessmentName.trim()}
-              className="bg-[#1E8449] hover:bg-[#1E8449]/90"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {saveMode === 'update' ? 'Updating...' : 'Saving...'}
-                </>
-              ) : (
-                <>
-                  {saveMode === 'update' ? (
-                    <>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Update
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save
-                    </>
-                  )}
-                </>
-              )}
-            </Button>
-          </div>
+        {/* Action Buttons - Fixed at bottom */}
+        <div className="flex justify-end gap-2 pt-4 mt-4 border-t bg-background flex-shrink-0">
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || !assessmentName.trim()}
+            className="bg-[#1E8449] hover:bg-[#1E8449]/90"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {saveMode === 'update' ? 'Updating...' : 'Saving...'}
+              </>
+            ) : (
+              <>
+                {saveMode === 'update' ? (
+                  <>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Update
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save
+                  </>
+                )}
+              </>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
