@@ -24,6 +24,8 @@ interface AssessmentMainContentProps {
   indicatorSourceFilter: 'all' | 'dhis2' | 'manual';
   isExporting: boolean;
   onBulkScoreCalculation: (manualEntries: Record<number, Record<string, number | null>>) => Promise<void>;
+  onCalculatingStateChange?: (isCalculating: boolean) => void;
+  excelTableRef?: React.RefObject<{ triggerBulkCalculation: () => void } | null>;
 }
 
 export default function AssessmentMainContent({
@@ -37,7 +39,9 @@ export default function AssessmentMainContent({
   error,
   indicatorSourceFilter,
   isExporting,
-  onBulkScoreCalculation
+  onBulkScoreCalculation,
+  onCalculatingStateChange,
+  excelTableRef
 }: AssessmentMainContentProps) {
   if (isLoadingSavedAssessment) {
     return (
@@ -149,6 +153,7 @@ export default function AssessmentMainContent({
 
         return (
           <ExcelTable
+            ref={excelTableRef}
             multiPeriodData={filteredData}
             selectedPeriods={selectedPeriods}
             onCellEdit={async (indicatorId: number, period: string, value: string) => {
@@ -161,6 +166,7 @@ export default function AssessmentMainContent({
             }}
             onBulkScoreCalculation={onBulkScoreCalculation}
             isExporting={isExporting}
+            onCalculatingStateChange={onCalculatingStateChange}
           />
         );
       })()}

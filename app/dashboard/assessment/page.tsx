@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { assessmentService } from '@/lib/assessment-service';
 
@@ -61,6 +61,20 @@ export default function AssessmentPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isCalculatingScores, setIsCalculatingScores] = useState(false);
+  const excelTableRef = useRef<{ triggerBulkCalculation: () => void } | null>(null);
+
+  // Handle calculating state changes
+  const handleCalculatingStateChange = useCallback((isCalculating: boolean) => {
+    setIsCalculatingScores(isCalculating);
+  }, []);
+
+  // Wrapper for bulk score calculation to match AssessmentHeader interface
+  const handleBulkScoreCalculationWrapper = useCallback(() => {
+    if (excelTableRef.current) {
+      excelTableRef.current.triggerBulkCalculation();
+    }
+  }, []);
 
   // Fetch org units on component mount
   useEffect(() => {
@@ -531,6 +545,8 @@ export default function AssessmentPage() {
           selectedOrgUnits={state.selectedOrgUnits}
           selectedPeriods={state.selectedPeriods}
           indicatorSourceFilter={indicatorSourceFilter}
+          isCalculatingScores={isCalculatingScores}
+          onBulkScoreCalculation={handleBulkScoreCalculationWrapper}
         />
 
         {/* Main Content */}
@@ -546,6 +562,8 @@ export default function AssessmentPage() {
           indicatorSourceFilter={indicatorSourceFilter}
           isExporting={isExporting}
                 onBulkScoreCalculation={handleBulkScoreCalculation}
+                onCalculatingStateChange={handleCalculatingStateChange}
+                excelTableRef={excelTableRef}
               />
         </div>
         </div>

@@ -212,7 +212,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                     </Avatar>
                     <div className="hidden lg:block text-left">
                       <p className="text-sm font-medium font-sans">{user?.dhis2_username || 'User'}</p>
-                      <p className="text-xs text-blue-200 font-sans">Administrator</p>
+                      <p className="text-xs text-blue-200 font-sans">DHIMS2 User</p>
                     </div>
                     <ChevronDown className="h-4 w-4 text-blue-200" />
                   </Button>
@@ -227,20 +227,12 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                       </Avatar>
                       <div>
                         <p className="font-semibold text-gray-900 font-sans">{user?.dhis2_username || 'User'}</p>
-                        <p className="text-sm text-gray-500 font-sans">Administrator</p>
+                        <p className="text-sm text-gray-500 font-sans">DHIMS2 User</p>
                       </div>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="p-3 cursor-pointer hover:bg-gray-50">
-                    <User className="mr-3 h-4 w-4 text-gray-500" />
-                    <span className="font-sans">Profile Settings</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="p-3 cursor-pointer hover:bg-gray-50">
-                    <Settings className="mr-3 h-4 w-4 text-gray-500" />
-                    <span className="font-sans">Preferences</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                  
                   <DropdownMenuItem 
                     onClick={handleLogout} 
                     className="p-3 cursor-pointer hover:bg-red-50 text-red-600 focus:text-red-600"

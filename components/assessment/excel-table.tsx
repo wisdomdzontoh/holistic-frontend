@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Database, Edit3, Calculator, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import { Database, Edit3, Calculator, CheckCircle2, Info, Loader2, Search, X } from 'lucide-react';
 import { AssessmentData, Period } from '@/lib/assessment-service';
 
 interface ExcelTableProps {
@@ -18,6 +18,7 @@ interface ExcelTableProps {
   onMilestoneRemarksChange?: (objectiveId: number, remarks: string) => void;
   onBulkScoreCalculation?: (manualEntries: Record<number, Record<string, number | null>>) => Promise<void>;
   isExporting?: boolean;
+  onCalculatingStateChange?: (isCalculating: boolean) => void;
 }
 
 interface CellData {
@@ -29,7 +30,7 @@ interface CellData {
 
 
 
-export default function ExcelTable({ 
+const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTableProps>(({ 
   multiPeriodData, 
   selectedPeriods, 
   onCellEdit, 
@@ -38,11 +39,14 @@ export default function ExcelTable({
   onRemarksChange,
   onMilestoneRemarksChange,
   onBulkScoreCalculation,
-  isExporting
-}: ExcelTableProps) {
+  isExporting,
+  onCalculatingStateChange
+}, ref) => {
   const [cellData, setCellData] = useState<Record<string, CellData>>({});
   const [hasManualEntries, setHasManualEntries] = useState(false);
   const [isCalculatingScores, setIsCalculatingScores] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const manualEntriesRef = useRef<Record<string, string>>({});
 
   // Check if there are manual entries
   useEffect(() => {
@@ -75,8 +79,12 @@ export default function ExcelTable({
               const hasValue = dataValue && dataValue.value !== null && dataValue.value !== undefined;
               const isManualEntry = dataValue && dataValue.manual_override !== null && dataValue.manual_override !== undefined;
               
+              // Preserve existing manual entries during calculation
+              const existingManualValue = manualEntriesRef.current[cellKey];
+              const isManualCell = existingManualValue && existingManualValue.trim() !== '';
+              
               newCellData[cellKey] = {
-                value: hasValue && dataValue.value !== null ? dataValue.value.toString() : '',
+                value: isManualCell ? existingManualValue : (hasValue && dataValue.value !== null ? dataValue.value.toString() : ''),
                 isEditable: !isDHIS2Data, // Editable if not DHIS2 data
                 isDHIS2Data: isDHIS2Data,
                 isManualEntry: isManualEntry
@@ -195,6 +203,12 @@ export default function ExcelTable({
       [cellKey]: { ...prev[cellKey], value }
     }));
     
+    // Store manual entries in ref for preservation during calculation
+    const cell = cellData[cellKey];
+    if (cell && !cell.isDHIS2Data) {
+      manualEntriesRef.current[cellKey] = value;
+    }
+    
     // Parse cell key to get indicator ID and period/column
     const [indicatorId, column] = cellKey.split('_');
     
@@ -239,6 +253,12 @@ export default function ExcelTable({
     if (!onBulkScoreCalculation) return;
     
     setIsCalculatingScores(true);
+    
+    // Notify parent about calculating state
+    if (onCalculatingStateChange) {
+      onCalculatingStateChange(true);
+    }
+    
     try {
       // Collect manual entries
       const manualEntries: Record<number, Record<string, number | null>> = {};
@@ -263,8 +283,18 @@ export default function ExcelTable({
       console.error('Error calculating scores:', error);
     } finally {
       setIsCalculatingScores(false);
+      
+      // Notify parent about calculating state
+      if (onCalculatingStateChange) {
+        onCalculatingStateChange(false);
+      }
     }
   };
+
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    triggerBulkCalculation: handleBulkScoreCalculation
+  }), [handleBulkScoreCalculation]);
 
   const getRowBackground = (type: string) => {
     switch (type) {
@@ -336,6 +366,18 @@ export default function ExcelTable({
     if (numScore === -1) return 'print-score-neg1';
     if (numScore === -2) return 'print-score-neg2';
     return '';
+  };
+
+  // Filter indicators based on search term
+  const filterIndicators = (objectives: any[]) => {
+    if (!searchTerm.trim()) return objectives;
+    
+    return objectives.map(objective => ({
+      ...objective,
+      indicators: objective.indicators.filter((indicator: any) =>
+        indicator.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    })).filter(objective => objective.indicators.length > 0);
   };
 
   if (!multiPeriodData || multiPeriodData.length === 0) {
@@ -427,90 +469,77 @@ export default function ExcelTable({
         }
       `}</style>
 
-      <div className="overflow-x-auto overflow-y-auto max-h-full print-table-container">
-        {/* Print Header - Only visible when printing */}
-        <div className="hidden print:block print-header">
-          <h1>Holistic Assessment Report</h1>
-          <p>
-            Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
+      {/* Print Header - Only visible when printing */}
+      <div className="hidden print:block print-header">
+        <h1>Holistic Assessment Report</h1>
+        <p>
+          Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
+        </p>
+      </div>
+
+      {/* Search Bar - Hidden when printing */}
+      <div className="no-print mb-4">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="Search indicators..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 pr-10 h-9 text-sm"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {searchTerm && (
+          <p className="text-xs text-gray-500 mt-1">
+            Showing indicators matching "{searchTerm}"
           </p>
-        </div>
-      
-        {/* Manual Scoring Controls - Hidden when printing */}
-        <div className="no-print mb-6 p-4 bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200 rounded-lg shadow-sm">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                {hasManualEntries ? (
-                  <>
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    <span className="text-green-700 font-medium">Manual entries detected</span>
-                  </>
-                ) : (
-                  <>
-                    <Info className="h-5 w-5 text-blue-600" />
-                    <span className="text-gray-700">Enter values in manual indicator cells to calculate scores</span>
-                  </>
-                )}
-              </div>
-            </div>
-            
-            {hasManualEntries && onBulkScoreCalculation && (
-              <button
-                onClick={handleBulkScoreCalculation}
-                disabled={isCalculatingScores}
-                className="px-6 py-3 bg-gradient-to-r from-[#1E8449] to-[#27AE60] text-white rounded-lg hover:from-[#27AE60] hover:to-[#2ECC71] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 shadow-md hover:shadow-lg transition-all duration-200 font-medium"
-              >
-                {isCalculatingScores ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Calculating Scores...</span>
-                  </>
-                ) : (
-                  <>
-                    <Calculator className="w-5 h-5" />
-                    <span>Calculate Scores</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-      
-      <table className="w-full border-collapse border border-gray-300 text-sm print-table">
-        <thead>
-          <tr style={{ backgroundColor: '#154360' }} className="text-white">
-            <th className="border border-gray-300 px-2 py-2 text-left font-medium" style={{ width: '50px' }}>
-              #
-            </th>
-            <th className="border border-gray-300 px-2 py-2 text-left font-medium" style={{ width: '300px' }}>
-              Indicator
-            </th>
-            {/* Performance Trend columns */}
-            {selectedPeriods.map((period) => (
-              <th key={period.name} className="border border-gray-300 px-2 py-2 text-center font-medium" style={{ width: '100px' }}>
-                {period.name}
+        )}
+      </div>
+    
+      <div className="overflow-auto max-h-[calc(100vh-200px)]">
+        <table className="w-full border-collapse border border-gray-300 text-sm print-table">
+          <thead className="sticky top-0 z-10">
+            <tr style={{ backgroundColor: '#154360' }} className="text-white">
+              <th className="border border-gray-300 px-2 py-2 text-left font-medium bg-[#154360]" style={{ width: '50px' }}>
+                #
               </th>
-            ))}
-            <th className="border border-gray-300 px-2 py-2 text-center font-medium" style={{ width: '80px' }}>
-              Change
-            </th>
-            <th className="border border-gray-300 px-2 py-2 text-center font-medium" style={{ width: '100px' }}>
-              P-T Gap Analysis
-            </th>
-            <th className="border border-gray-300 px-2 py-2 text-center font-medium" style={{ width: '80px' }}>
-              Target
-            </th>
-            <th className="border border-gray-300 px-2 py-2 text-center font-medium" style={{ width: '120px' }}>
-              Assessed score (-2, -1, 0 +1, +2)
-            </th>
-            <th className="border border-gray-300 px-2 py-2 text-center font-medium" style={{ width: '100px' }}>
-              Remarks
-            </th>
-          </tr>
-        </thead>
+              <th className="border border-gray-300 px-2 py-2 text-left font-medium bg-[#154360]" style={{ width: '300px' }}>
+                Indicator
+              </th>
+              {/* Performance Trend columns */}
+              {selectedPeriods.map((period) => (
+                <th key={period.name} className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '100px' }}>
+                  {period.name}
+                </th>
+              ))}
+              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '80px' }}>
+                Change
+              </th>
+              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '100px' }}>
+                P-T Gap Analysis
+              </th>
+              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '80px' }}>
+                Target
+              </th>
+              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '120px' }}>
+                Assessed score (-2, -1, 0 +1, +2)
+              </th>
+              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '100px' }}>
+                Remarks
+              </th>
+            </tr>
+          </thead>
         <tbody>
-          {multiPeriodData[0]?.objectives.map((objective, objIndex) => (
+          {filterIndicators(multiPeriodData[0]?.objectives || []).length > 0 ? (
+            filterIndicators(multiPeriodData[0]?.objectives || []).map((objective, objIndex) => (
             <React.Fragment key={objective.id}>
               {/* Objective Row */}
               <tr className={`${getRowBackground('objective')} ${getPrintRowClass('objective')}`}>
@@ -521,8 +550,8 @@ export default function ExcelTable({
               
               {/* Indicators */}
               {objective.indicators
-                .sort((a, b) => a.display_order - b.display_order)
-                .map((indicator, indIndex) => (
+                .sort((a: any, b: any) => a.display_order - b.display_order)
+                .map((indicator: any, indIndex: number) => (
                 <tr key={indicator.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 px-2 py-2 text-center font-medium">
                     <Tooltip>
@@ -749,10 +778,25 @@ export default function ExcelTable({
                 </td>
               </tr>
             </React.Fragment>
-          ))}
+            ))
+          ) : (
+            <tr>
+              <td colSpan={7 + selectedPeriods.length} className="border border-gray-300 px-4 py-8 text-center text-gray-500">
+                <div className="flex flex-col items-center gap-2">
+                  <Search className="h-8 w-8 text-gray-300" />
+                  <p>No indicators found matching "{searchTerm}"</p>
+                  <p className="text-sm">Try adjusting your search terms</p>
+                </div>
+              </td>
+            </tr>
+          )}
         </tbody>
-      </table>
+        </table>
       </div>
     </div>
   );
-}
+});
+
+ExcelTable.displayName = 'ExcelTable';
+
+export default ExcelTable;
