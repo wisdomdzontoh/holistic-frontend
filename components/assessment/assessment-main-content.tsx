@@ -45,19 +45,21 @@ export default function AssessmentMainContent({
 }: AssessmentMainContentProps) {
   if (isLoadingSavedAssessment) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50">
-        <Card className="w-96">
+      <div className="flex items-center justify-center h-full app-gradient-bg">
+        <Card className="w-96 border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-[#1E8449] animate-spin" />
+            <CardTitle className="flex items-center gap-3" style={{ fontFamily: 'var(--font-display)' }}>
+              <div className="p-2 bg-brand-green/10 rounded-lg">
+                <RefreshCw className="h-5 w-5 text-brand-green animate-spin" />
+              </div>
               Loading Assessment
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-ink-muted">
               Loading your saved assessment data...
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-2 text-xs text-ink-muted">
               <Target className="h-3 w-3" />
               <span>Please wait...</span>
             </div>
@@ -69,26 +71,28 @@ export default function AssessmentMainContent({
 
   if (isGenerating) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50">
-        <Card className="w-96">
+      <div className="flex items-center justify-center h-full app-gradient-bg">
+        <Card className="w-96 border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5 text-[#1E8449] animate-spin" />
+            <CardTitle className="flex items-center gap-3" style={{ fontFamily: 'var(--font-display)' }}>
+              <div className="p-2 bg-brand-green/10 rounded-lg">
+                <RefreshCw className="h-5 w-5 text-brand-green animate-spin" />
+              </div>
               Generating Assessment
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Progress</span>
-                <span className="text-gray-900 font-medium">{loadingProgress}%</span>
+                <span className="text-ink-muted">Progress</span>
+                <span className="text-ink font-medium">{loadingProgress}%</span>
               </div>
               <Progress value={loadingProgress} className="h-2" />
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-ink-muted">
               {loadingMessage}
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-2 text-xs text-ink-muted">
               <Target className="h-3 w-3" />
               <span>This may take a few moments...</span>
             </div>
@@ -100,26 +104,28 @@ export default function AssessmentMainContent({
 
   if (!isDataLoaded) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50">
-        <Card className="w-96">
+      <div className="flex items-center justify-center h-full app-gradient-bg">
+        <Card className="w-96 border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-[#1E8449]" />
+            <CardTitle className="flex items-center gap-3" style={{ fontFamily: 'var(--font-display)' }}>
+              <div className="p-2 bg-brand-navy/10 rounded-lg">
+                <Target className="h-5 w-5 text-brand-navy" />
+              </div>
               Getting Started
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-3 text-sm text-gray-600">
+            <div className="space-y-3 text-sm text-ink-muted">
               <div className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 bg-[#1E8449] rounded-full mt-2 flex-shrink-0"></div>
+                <div className="w-1.5 h-1.5 bg-brand-green rounded-full mt-2 flex-shrink-0"></div>
                 <span>All configuration options are available in the left sidebar</span>
               </div>
               <div className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 bg-[#1E8449] rounded-full mt-2 flex-shrink-0"></div>
+                <div className="w-1.5 h-1.5 bg-brand-green rounded-full mt-2 flex-shrink-0"></div>
                 <span>Select organization units and periods to begin</span>
               </div>
               <div className="flex items-start gap-2">
-                <div className="w-1.5 h-1.5 bg-[#1E8449] rounded-full mt-2 flex-shrink-0"></div>
+                <div className="w-1.5 h-1.5 bg-brand-green rounded-full mt-2 flex-shrink-0"></div>
                 <span>Click "Generate Report" to fetch data and calculate scores</span>
               </div>
             </div>

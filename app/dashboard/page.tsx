@@ -98,24 +98,24 @@ export default function DashboardPage() {
       description: "Start comprehensive facility evaluation",
       href: "/dashboard/assessment",
       icon: Target,
-      color: "bg-blue-600",
-      hoverColor: "hover:bg-blue-700",
+      color: "bg-brand-navy",
+      hoverColor: "hover:bg-brand-navy-dark",
     },
     {
       title: "Manage Indicators",
       description: "Configure assessment criteria",
       href: "/dashboard/indicators",
       icon: FileText,
-      color: "bg-blue-600",
-      hoverColor: "hover:bg-blue-700",
+      color: "bg-brand-teal",
+      hoverColor: "hover:bg-brand-teal/90",
     },
     {
       title: "View Analysis",
       description: "Performance charts and insights",
       href: "/dashboard/analysis",
       icon: BarChart3,
-      color: "bg-blue-600",
-      hoverColor: "hover:bg-blue-700",
+      color: "bg-brand-green",
+      hoverColor: "hover:bg-brand-green-dark",
     },
   ]
 
@@ -124,29 +124,29 @@ export default function DashboardPage() {
       label: "DHIS2 Connection",
       status: "Connected",
       icon: Database,
-      color: "text-emerald-600",
-      bgColor: "bg-emerald-100",
+      color: "text-brand-green",
+      bgColor: "bg-brand-green/10",
     },
     {
       label: "System Health",
       status: "Operational",
       icon: Activity,
-      color: "text-emerald-600",
-      bgColor: "bg-emerald-100",
+      color: "text-brand-green",
+      bgColor: "bg-brand-green/10",
     },
     {
       label: "Last Sync",
       status: "Just now",
       icon: Clock,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100",
+      color: "text-brand-teal",
+      bgColor: "bg-brand-teal/10",
     },
   ]
 
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-6 space-y-6 bg-gray-200">
+        <div className="p-6 space-y-6 app-gradient-bg min-h-full">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-gray-300 rounded w-1/3"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -163,15 +163,15 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-8 bg-gray-200">
+      <div className="p-6 space-y-8 app-gradient-bg min-h-full">
         {/* Header Section */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-ink" style={{ fontFamily: 'var(--font-display)' }}>Dashboard</h1>
             <p className="text-muted-foreground text-lg">Comprehensive health facility assessment platform</p>
           </div>
           <Link href="/dashboard/assessment">
-            <Button size="lg" style={{ backgroundColor: '#154360' }} className="hover:bg-blue-700">
+            <Button size="lg" style={{ backgroundColor: 'var(--brand-navy)' }} className="hover:bg-brand-navy-dark">
               <Target className="h-5 w-5 mr-2" />
               Start New Assessment
             </Button>
@@ -198,13 +198,13 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Total Assessments</p>
                   <p className="text-3xl font-bold">{stats?.total_assessments || total}</p>
                 </div>
-                <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <BarChart3 className="h-6 w-6 text-blue-600" />
+                <div className="h-12 w-12 bg-brand-navy/10 rounded-lg flex items-center justify-center">
+                  <BarChart3 className="h-6 w-6 text-brand-navy" />
                 </div>
               </div>
               <div className="flex items-center gap-2 mt-4">
-                <TrendingUp className="h-4 w-4 text-emerald-600" />
-                <span className="text-sm text-emerald-600 font-medium">
+                <TrendingUp className="h-4 w-4 text-brand-green" />
+                <span className="text-sm text-brand-green font-medium">
                   {stats?.assessment_growth ? `+${stats.assessment_growth}%` : '+15%'} from last year
                 </span>
               </div>
@@ -218,13 +218,13 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-muted-foreground">Total Indicators</p>
                   <p className="text-3xl font-bold">{stats?.total_indicators || 104}</p>
                 </div>
-                <div className="h-12 w-12 bg-emerald-100 rounded-lg flex items-center justify-center">
-                  <CheckCircle className="h-6 w-6 text-emerald-600" />
+                <div className="h-12 w-12 bg-brand-green/10 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="h-6 w-6 text-brand-green" />
                 </div>
               </div>
               <div className="flex items-center gap-2 mt-4">
-                <TrendingUp className="h-4 w-4 text-emerald-600" />
-                <span className="text-sm text-emerald-600 font-medium">
+                <TrendingUp className="h-4 w-4 text-brand-green" />
+                <span className="text-sm text-brand-green font-medium">
                   {stats?.indicator_growth ? `+${stats.indicator_growth}%` : '+8%'} from last year
                 </span>
               </div>
@@ -235,14 +235,14 @@ export default function DashboardPage() {
         {/* Assessment Distribution Bar Chart */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" style={{ color: '#154360' }} />
+            <CardTitle className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+              <BarChart3 className="h-5 w-5" style={{ color: 'var(--brand-navy)' }} />
               Assessment Distribution ({currentYear})
             </CardTitle>
             <div className="text-sm text-gray-600">
               {recentMonth ? `Latest: ${recentMonth.label} (${recentMonth.count} assessments)` : 'No assessments yet this year'}
               {stats?.chart_stats?.peak_month && (
-                <span className="ml-2 text-blue-600">
+                <span className="ml-2 text-brand-teal">
                   • Peak: {stats.chart_stats.peak_month.charAt(0).toUpperCase() + stats.chart_stats.peak_month.slice(1)} ({stats.chart_stats.peak_count})
                 </span>
               )}
@@ -289,10 +289,10 @@ export default function DashboardPage() {
                       <div className="relative w-full">
                         <div 
                           className={`rounded-t w-full transition-all duration-300 hover:opacity-80 ${
-                            isCurrentMonth ? 'ring-2 ring-blue-400' : ''
+                            isCurrentMonth ? 'ring-2 ring-brand-teal' : ''
                           }`}
                           style={{ 
-                            backgroundColor: data.count > 0 ? '#154360' : '#e5e7eb',
+                            backgroundColor: data.count > 0 ? 'var(--brand-navy)' : '#e5e7eb',
                             height: `${barHeight}px`,
                             minHeight: '4px'
                           }}
@@ -310,7 +310,7 @@ export default function DashboardPage() {
                       
                       {/* Month label */}
                       <span className={`text-xs font-medium ${
-                        isCurrentMonth ? 'text-blue-600 font-semibold' : 'text-gray-600'
+                        isCurrentMonth ? 'text-brand-teal font-semibold' : 'text-gray-600'
                       }`}>
                         {data.month}
                       </span>
@@ -329,7 +329,7 @@ export default function DashboardPage() {
               {/* Chart Legend */}
               <div className="flex items-center justify-center space-x-6 text-xs text-gray-500 pt-2 border-t border-gray-100">
                 <div className="flex items-center space-x-1">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#154360' }}></div>
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: 'var(--brand-navy)' }}></div>
                   <span>Assessments</span>
                 </div>
                 <div className="flex items-center space-x-1">
@@ -354,8 +354,8 @@ export default function DashboardPage() {
           {/* Quick Actions */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5" style={{ color: '#154360' }} />
+              <CardTitle className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+                <Zap className="h-5 w-5" style={{ color: 'var(--brand-navy)' }} />
                 Quick Actions
               </CardTitle>
             </CardHeader>
@@ -384,15 +384,15 @@ export default function DashboardPage() {
           {/* Key Features */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5" style={{ color: '#154360' }} />
+              <CardTitle className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+                <CheckCircle className="h-5 w-5" style={{ color: 'var(--brand-navy)' }} />
                 Platform Benefits
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div className="flex gap-4">
-                  <div className="w-2 h-2 rounded-full bg-blue-600 mt-2 flex-shrink-0"></div>
+                  <div className="w-2 h-2 rounded-full bg-brand-navy mt-2 flex-shrink-0"></div>
                   <div className="space-y-1">
                     <p className="font-semibold">Automated Data Collection</p>
                     <p className="text-sm text-muted-foreground">
@@ -401,7 +401,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex gap-4">
-                  <div className="w-2 h-2 rounded-full bg-blue-600 mt-2 flex-shrink-0"></div>
+                  <div className="w-2 h-2 rounded-full bg-brand-navy mt-2 flex-shrink-0"></div>
                   <div className="space-y-1">
                     <p className="font-semibold">Real-time Analytics</p>
                     <p className="text-sm text-muted-foreground">
@@ -410,7 +410,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex gap-4">
-                  <div className="w-2 h-2 rounded-full bg-blue-600 mt-2 flex-shrink-0"></div>
+                  <div className="w-2 h-2 rounded-full bg-brand-navy mt-2 flex-shrink-0"></div>
                   <div className="space-y-1">
                     <p className="font-semibold">Comprehensive Reporting</p>
                     <p className="text-sm text-muted-foreground">
@@ -419,7 +419,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex gap-4">
-                  <div className="w-2 h-2 rounded-full bg-blue-600 mt-2 flex-shrink-0"></div>
+                  <div className="w-2 h-2 rounded-full bg-brand-navy mt-2 flex-shrink-0"></div>
                   <div className="space-y-1">
                     <p className="font-semibold">Performance Tracking</p>
                     <p className="text-sm text-muted-foreground">
@@ -435,8 +435,8 @@ export default function DashboardPage() {
         {/* System Status */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" style={{ color: '#154360' }} />
+            <CardTitle className="flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+              <Activity className="h-5 w-5" style={{ color: 'var(--brand-navy)' }} />
               System Status
             </CardTitle>
           </CardHeader>
@@ -452,7 +452,7 @@ export default function DashboardPage() {
                     <p className="text-sm text-muted-foreground">{status.status}</p>
                   </div>
                   <div className="ml-auto">
-                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                    <div className="w-3 h-3 bg-brand-green rounded-full"></div>
                   </div>
                 </div>
               ))}

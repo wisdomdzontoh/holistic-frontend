@@ -93,7 +93,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
 
   return (
     <>
-      <header className="bg-gradient-to-r from-slate-900 to-blue-900 border-b border-blue-800 shadow-lg sticky top-0 z-50">
+      <header className="bg-gradient-to-r from-brand-navy to-brand-navy-dark border-b border-brand-navy-dark shadow-lg sticky top-0 z-50">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Left side - Logo and Brand */}
@@ -102,7 +102,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="lg:hidden text-white hover:text-blue-200 hover:bg-white/10"
+                className="lg:hidden text-white hover:text-white hover:bg-white/10"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
                 {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -110,7 +110,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
 
               {/* Logo */}
               <div className="flex items-center space-x-4">
-                <div className="relative w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-xl border-2 border-blue-300">
+                <div className="relative w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-xl border-2 border-brand-teal">
                   <Image
                     src="/images/coat-of-arms.png"
                     alt="Ghana Coat of Arms"
@@ -121,8 +121,8 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                   />
                 </div>
                 <div className="hidden sm:block">
-                  <h1 className="text-xl font-bold text-white font-sans">Holistic Assessment</h1>
-                  <p className="text-xs text-blue-200 font-sans">Health Facility Dashboard</p>
+                  <h1 className="text-xl font-semibold text-white" style={{ fontFamily: 'var(--font-display)' }}>Holistic Assessment</h1>
+                  <p className="text-xs text-white/60">Health Facility Dashboard</p>
                 </div>
               </div>
             </div>
@@ -136,7 +136,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                   placeholder="Search navigation pages..."
                   value={searchQuery}
                   onChange={handleSearchChange}
-                  className="pl-10 pr-4 py-2 bg-white/10 border-white/20 focus:bg-white focus:border-blue-400 focus:ring-blue-400 rounded-xl font-sans text-white placeholder-gray-300"
+                  className="pl-10 pr-4 py-2 bg-white/10 border-white/20 focus:bg-white focus:border-brand-teal focus:ring-brand-teal/40 rounded-xl text-white placeholder-gray-300"
                 />
                 
                 {/* Search Results Dropdown */}
@@ -153,14 +153,14 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                           >
                             <IconComponent className="h-5 w-5 text-gray-500" />
                             <div>
-                              <p className="font-medium text-gray-900 font-sans">{item.name}</p>
-                              <p className="text-sm text-gray-500 font-sans">{item.description}</p>
+                              <p className="font-medium text-gray-900">{item.name}</p>
+                              <p className="text-sm text-gray-500">{item.description}</p>
                             </div>
                           </button>
                         );
                       })
                     ) : (
-                      <div className="px-4 py-3 text-gray-500 font-sans">
+                      <div className="px-4 py-3 text-gray-500">
                         No navigation items found
                       </div>
                     )}
@@ -174,8 +174,8 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
               {/* Connection Status */}
               <div className="hidden sm:flex items-center space-x-2">
                 <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-                  isOnline 
-                    ? 'text-green-300 bg-green-500/20 border border-green-400/30' 
+                  isOnline
+                    ? 'text-brand-green-light bg-brand-green/20 border border-brand-green-light/30'
                     : 'text-red-300 bg-red-500/20 border border-red-400/30'
                 }`}>
                   {isOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
@@ -184,7 +184,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
               </div>
 
               {/* Time Display */}
-              <div className="hidden lg:flex items-center text-sm text-blue-200 font-mono bg-white/10 px-3 py-1.5 rounded-lg">
+              <div className="hidden lg:flex items-center text-sm text-white/70 bg-white/10 px-3 py-1.5 rounded-lg" style={{ fontFamily: 'var(--font-geist-mono)' }}>
                 {getCurrentTime()}
               </div>
 
@@ -192,7 +192,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-white hover:text-blue-200 hover:bg-white/10 h-9 w-9 p-0"
+                className="text-white hover:text-white hover:bg-white/10 h-9 w-9 p-0"
                 onClick={() => setIsNavigationModalOpen(true)}
               >
                 <Grid3X3 className="h-4 w-4" />
@@ -203,31 +203,31 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                 <DropdownMenuTrigger asChild>
                   <Button 
                     variant="ghost" 
-                    className="flex items-center space-x-2 text-white hover:text-blue-200 hover:bg-white/10 h-9 px-3 rounded-lg"
+                    className="flex items-center space-x-2 text-white hover:text-white hover:bg-white/10 h-9 px-3 rounded-lg"
                   >
                     <Avatar className="h-7 w-7">
-                      <AvatarFallback className="bg-white text-blue-900 text-xs font-semibold">
+                      <AvatarFallback className="bg-white text-brand-navy text-xs font-semibold">
                         {getUserInitials(user?.dhis2_username || 'User')}
                       </AvatarFallback>
                     </Avatar>
                     <div className="hidden lg:block text-left">
-                      <p className="text-sm font-medium font-sans">{user?.dhis2_username || 'User'}</p>
-                      <p className="text-xs text-blue-200 font-sans">DHIMS2 User</p>
+                      <p className="text-sm font-medium">{user?.dhis2_username || 'User'}</p>
+                      <p className="text-xs text-white/70">DHIMS2 User</p>
                     </div>
-                    <ChevronDown className="h-4 w-4 text-blue-200" />
+                    <ChevronDown className="h-4 w-4 text-white/70" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64 p-2">
                   <DropdownMenuLabel className="p-3">
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-semibold">
+                        <AvatarFallback className="bg-brand-navy text-white font-semibold">
                           {getUserInitials(user?.dhis2_username || 'User')}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-semibold text-gray-900 font-sans">{user?.dhis2_username || 'User'}</p>
-                        <p className="text-sm text-gray-500 font-sans">DHIMS2 User</p>
+                        <p className="font-semibold text-gray-900">{user?.dhis2_username || 'User'}</p>
+                        <p className="text-sm text-gray-500">DHIMS2 User</p>
                       </div>
                     </div>
                   </DropdownMenuLabel>
@@ -238,7 +238,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                     className="p-3 cursor-pointer hover:bg-red-50 text-red-600 focus:text-red-600"
                   >
                     <LogOut className="mr-3 h-4 w-4" />
-                    <span className="font-sans">Sign Out</span>
+                    <span className="">Sign Out</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -254,7 +254,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                 placeholder="Search navigation pages..."
                 value={searchQuery}
                 onChange={handleSearchChange}
-                className="pl-10 pr-4 py-2 bg-white/10 border-white/20 focus:bg-white focus:border-blue-400 focus:ring-blue-400 rounded-xl font-sans text-white placeholder-gray-300"
+                className="pl-10 pr-4 py-2 bg-white/10 border-white/20 focus:bg-white focus:border-brand-teal focus:ring-brand-teal/40 rounded-xl text-white placeholder-gray-300"
               />
               
               {/* Mobile Search Results Dropdown */}
@@ -271,14 +271,14 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                         >
                           <IconComponent className="h-5 w-5 text-gray-500" />
                           <div>
-                            <p className="font-medium text-gray-900 font-sans">{item.name}</p>
-                            <p className="text-sm text-gray-500 font-sans">{item.description}</p>
+                            <p className="font-medium text-gray-900">{item.name}</p>
+                            <p className="text-sm text-gray-500">{item.description}</p>
                           </div>
                         </button>
                       );
                     })
                   ) : (
-                    <div className="px-4 py-3 text-gray-500 font-sans">
+                    <div className="px-4 py-3 text-gray-500">
                       No navigation items found
                     </div>
                   )}

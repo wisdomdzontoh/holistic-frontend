@@ -203,21 +203,22 @@ export default function AssessmentPage() {
         return orgUnit ? (orgUnit.displayName || orgUnit.name || orgUnitId) : orgUnitId;
       });
 
-        setExportProgress('Generating Excel file...');
-
-        // Collect manual entries from the assessment data
+          // Collect manual entries from the assessment data
         const manualEntries = collectManualEntries();
 
-      const exportResult = await assessmentService.exportHolisticExcelWithFilename({
+      const exportResult = await assessmentService.exportHolisticExcelAsync(
+        {
           org_unit_ids: state.selectedOrgUnits,
-        org_unit_names: orgUnitNames,
-        periods: state.selectedPeriods,
-        include_scores: true,
+          org_unit_names: orgUnitNames,
+          periods: state.selectedPeriods,
+          include_scores: true,
           manual_entries: manualEntries,
-        pre_calculated_scores: preCalculatedScores,
-      });
-
-        setExportProgress('Preparing download...');
+          pre_calculated_scores: preCalculatedScores,
+        },
+        (percent, statusLabel) => {
+          setExportProgress(percent >= 100 ? 'Preparing download...' : `${statusLabel} (${percent}%)`);
+        }
+      );
 
       // Create download link with the correct filename from backend
       const url = window.URL.createObjectURL(exportResult.blob);

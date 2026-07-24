@@ -22,23 +22,23 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-200">
+      <div className="min-h-screen flex items-center justify-center app-gradient-bg">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 mx-auto" style={{ borderColor: '#154360' }}></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 mx-auto" style={{ borderColor: 'var(--brand-navy)' }}></div>
+          <p className="mt-4 text-ink-muted">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-200 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center app-gradient-bg py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>
             DHIS2 Data Validator
           </h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-ink-muted">
             Holistic Assessment Webapp
           </p>
         </div>
@@ -53,7 +53,7 @@ export default function HomePage() {
           <CardContent className="text-center">
             <Button 
               onClick={() => router.push('/login')}
-              style={{ backgroundColor: '#154360' }}
+              style={{ backgroundColor: 'var(--brand-navy)' }}
             >
               Go to Login
             </Button>
@@ -67,7 +67,7 @@ export default function HomePage() {
               href="https://wisdomdzontoh.vercel.app/"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800"
+              className="text-brand-navy hover:text-brand-navy-dark"
             >
               Wisdom Dzontoh
             </a>

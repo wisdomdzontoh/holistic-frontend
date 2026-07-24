@@ -140,32 +140,32 @@ export function OpenAssessmentModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200 flex-shrink-0">
+        <DialogHeader className="bg-gradient-to-r from-white to-surface-muted border-b border-gray-200 flex-shrink-0">
           <div className="px-6 pt-6 pb-4">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <FileText className="h-6 w-6 text-blue-600" />
+              <div className="p-2 bg-brand-navy/10 rounded-lg">
+                <FileText className="h-6 w-6 text-brand-navy" />
               </div>
-              <DialogTitle className="text-2xl font-bold text-slate-800">Open Saved Assessment</DialogTitle>
+              <DialogTitle className="text-2xl font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Open Saved Assessment</DialogTitle>
             </div>
-            <p className="text-slate-600">Browse and open your previously saved assessments</p>
+            <p className="text-ink-muted">Browse and open your previously saved assessments</p>
           </div>
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto space-y-4 px-6 py-4 min-h-0">
           {/* Search and Controls */}
-          <div className="flex items-center gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-3 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input 
                 placeholder="Search assessments by name or organization unit..." 
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 border-gray-300 focus:border-brand-teal focus:ring-brand-teal/40"
               />
             </div>
             <select 
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-teal focus:ring-brand-teal/40 bg-white"
               value={ordering} 
               onChange={(e)=>setOrdering(e.target.value as any)}
             >
@@ -177,7 +177,7 @@ export function OpenAssessmentModal({
             <Button 
               variant="outline" 
               onClick={()=>fetchData()}
-              className="border-slate-300 hover:bg-slate-50 hover:border-slate-400"
+              className="border-gray-300 hover:bg-gray-50 hover:border-gray-400"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
@@ -185,23 +185,23 @@ export function OpenAssessmentModal({
           </div>
 
           {/* Assessment Table */}
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
             <div className="overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gradient-to-r from-slate-50 to-gray-50 sticky top-0">
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Assessment Name</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Organization Unit</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Created</th>
-                    <th className="text-left px-4 py-3 font-semibold text-slate-700">Last Modified</th>
-                    <th className="px-4 py-3 text-right font-semibold text-slate-700">Actions</th>
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-50 sticky top-0">
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left px-4 py-3 font-semibold text-ink">Assessment Name</th>
+                    <th className="text-left px-4 py-3 font-semibold text-ink">Organization Unit</th>
+                    <th className="text-left px-4 py-3 font-semibold text-ink">Created</th>
+                    <th className="text-left px-4 py-3 font-semibold text-ink">Last Modified</th>
+                    <th className="px-4 py-3 text-right font-semibold text-ink">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
                       <td className="px-4 py-8 text-center" colSpan={5}>
-                        <div className="flex items-center justify-center gap-2 text-slate-500">
+                        <div className="flex items-center justify-center gap-2 text-ink-muted">
                           <Loader2 className="h-5 w-5 animate-spin" />
                           Loading assessments...
                         </div>
@@ -210,8 +210,8 @@ export function OpenAssessmentModal({
                   ) : view.length === 0 ? (
                     <tr>
                       <td className="px-4 py-8 text-center" colSpan={5}>
-                        <div className="text-center text-slate-500">
-                          <FileText className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                        <div className="text-center text-ink-muted">
+                          <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                           <p className="text-lg font-medium">No saved assessments found</p>
                           <p className="text-sm">Try adjusting your search or create a new assessment</p>
                         </div>
@@ -223,33 +223,33 @@ export function OpenAssessmentModal({
                         key={item.id} 
                         className={`cursor-pointer transition-colors duration-200 ${
                           selectedId === item.id 
-                            ? 'bg-blue-50 border-l-4 border-l-blue-500' 
-                            : 'hover:bg-slate-50 border-l-4 border-l-transparent'
+                            ? 'bg-brand-navy/5 border-l-4 border-l-brand-navy' 
+                            : 'hover:bg-gray-50 border-l-4 border-l-transparent'
                         }`} 
                         onClick={() => setSelectedId(item.id)}
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-blue-600" />
-                            <span className="font-semibold text-slate-800">{item.name}</span>
+                            <FileText className="h-4 w-4 text-brand-navy" />
+                            <span className="font-semibold text-ink">{item.name}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-green-600" />
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            <Building2 className="h-4 w-4 text-brand-green" />
+                            <Badge variant="outline" className="bg-brand-green/10 text-brand-green border-brand-green/20">
                               {getOrgUnitDisplayName(item.org_unit_id)}
                             </Badge>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-slate-600">
+                          <div className="flex items-center gap-2 text-ink-muted">
                             <Calendar className="h-4 w-4" />
                             <span>{new Date(item.created_at).toLocaleDateString()}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-slate-600">
+                          <div className="flex items-center gap-2 text-ink-muted">
                             <Clock className="h-4 w-4" />
                             <span>{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : 'Never'}</span>
                           </div>
@@ -272,11 +272,11 @@ export function OpenAssessmentModal({
           </div>
 
           {/* Pagination Controls */}
-          <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
             <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-600">Rows per page:</span>
+              <span className="text-sm text-ink-muted">Rows per page:</span>
               <select
-                className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-teal focus:ring-brand-teal/40 bg-white"
                 value={pageSize}
                 onChange={(e)=>{ setPageSize(parseInt(e.target.value,10)); setPage(1); }}
               >
@@ -284,22 +284,22 @@ export function OpenAssessmentModal({
                 <option value={20}>20</option>
                 <option value={50}>50</option>
               </select>
-              <span className="text-sm text-slate-500 font-medium">{count} total assessments</span>
+              <span className="text-sm text-ink-muted font-medium">{count} total assessments</span>
             </div>
             <div className="flex items-center gap-2">
               <button
-                className="p-2 border border-slate-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors duration-200"
+                className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
                 onClick={()=>setPage(p=>Math.max(1,p-1))}
                 disabled={page<=1}
                 title="Previous Page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="px-3 py-2 text-sm font-medium text-slate-700">
+              <span className="px-3 py-2 text-sm font-medium text-ink">
                 Page {page} of {totalPages}
               </span>
               <button
-                className="p-2 border border-slate-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors duration-200"
+                className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
                 onClick={()=>setPage(p=>Math.min(totalPages,p+1))}
                 disabled={page>=totalPages}
                 title="Next Page"
@@ -315,7 +315,7 @@ export function OpenAssessmentModal({
           <Button 
             variant="outline" 
             onClick={onClose}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+            className="border-gray-300 text-ink hover:bg-gray-50 hover:border-gray-400"
           >
             Cancel
           </Button>
@@ -326,7 +326,7 @@ export function OpenAssessmentModal({
               onClose();
             }}
             disabled={!selectedId}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-2"
+            className="bg-gradient-to-r bg-brand-navy text-white hover:bg-brand-navy-dark shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-2"
           >
             <FileText className="h-4 w-4 mr-2" />
             Open Assessment
@@ -376,7 +376,7 @@ export function NameAssessmentModal({
           <Input value={name} onChange={(e)=>setName(e.target.value)} placeholder="Enter a descriptive name" />
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button className="text-white" style={{backgroundColor:'#154360'}} onClick={()=>{ if(name.trim()){ onConfirm(name.trim()); onClose(); } }}>Save</Button>
+            <Button className="text-white" style={{backgroundColor:'var(--brand-navy)'}} onClick={()=>{ if(name.trim()){ onConfirm(name.trim()); onClose(); } }}>Save</Button>
           </div>
         </div>
       </DialogContent>
@@ -409,7 +409,7 @@ export function ConfirmModal({
           <p>{message}</p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button className="text-white" style={{backgroundColor:'#154360'}} onClick={()=>{onConfirm(); onClose();}}>{confirmText}</Button>
+            <Button className="text-white" style={{backgroundColor:'var(--brand-navy)'}} onClick={()=>{onConfirm(); onClose();}}>{confirmText}</Button>
           </div>
         </div>
       </DialogContent>

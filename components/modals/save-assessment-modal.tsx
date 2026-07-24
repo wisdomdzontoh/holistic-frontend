@@ -70,12 +70,12 @@ export function SaveAssessmentModal({
           <DialogTitle className="flex items-center gap-2">
             {saveMode === 'update' ? (
               <>
-                <Edit className="h-5 w-5 text-[#1E8449]" />
+                <Edit className="h-5 w-5 text-brand-green" />
                 Update Assessment
               </>
             ) : (
               <>
-                <Save className="h-5 w-5 text-[#1E8449]" />
+                <Save className="h-5 w-5 text-brand-green" />
                 Save Assessment
               </>
             )}
@@ -144,7 +144,7 @@ export function SaveAssessmentModal({
           <Button
             onClick={handleSave}
             disabled={isSaving || !assessmentName.trim()}
-            className="bg-[#1E8449] hover:bg-[#1E8449]/90"
+            className="bg-brand-green hover:bg-brand-green/90"
           >
             {isSaving ? (
               <>

@@ -105,7 +105,7 @@ export default function IndicatorsPage() {
             <div className="text-center">
               <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-600" />
               <p className="text-red-600 mb-4">{error}</p>
-              <Button onClick={fetchIndicators} style={{ backgroundColor: '#154360' }}>
+              <Button onClick={fetchIndicators} style={{ backgroundColor: 'var(--brand-navy)' }}>
                 Try Again
               </Button>
                       </div>
@@ -175,7 +175,7 @@ export default function IndicatorsPage() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
-                <tr style={{ backgroundColor: '#154360' }} className="text-white">
+                <tr style={{ backgroundColor: 'var(--brand-navy)' }} className="text-white">
                   <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-sm" style={{ width: '8%' }}>
                     #
                   </th>
@@ -216,7 +216,7 @@ export default function IndicatorsPage() {
                   filteredObjectives.map((objective) => (
                     <React.Fragment key={objective.id}>
                       {/* Objective Header Row */}
-                      <tr className="bg-orange-100">
+                      <tr className="bg-accent-gold-pale">
                         <td colSpan={8} className="border border-gray-300 px-4 py-3 font-semibold text-gray-900">
                           {objective.name}
                         </td>
@@ -239,7 +239,7 @@ export default function IndicatorsPage() {
                               {indicator.name}
                             </div>
                             {indicator.dhis2_uid && (
-                              <div className="text-xs text-blue-600 mt-1">
+                              <div className="text-xs text-brand-teal mt-1">
                                 DHIS2: {indicator.dhis2_uid}
                               </div>
                             )}
@@ -293,7 +293,7 @@ export default function IndicatorsPage() {
               <span>Inactive indicators are highlighted in red</span>
                       </div>
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-blue-600 rounded"></div>
+              <div className="w-3 h-3 bg-brand-teal rounded"></div>
               <span>DHIS2 indicators show UID</span>
                         </div>
                       </div>

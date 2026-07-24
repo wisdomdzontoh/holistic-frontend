@@ -286,9 +286,9 @@ export default function AnalysisPage() {
 
   const DetailedScoresTable = ({ scores }: { scores: AssessmentData['detailed_scores'] }) => (
     <Card className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-      <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
-        <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
-          <Database className="h-5 w-5 mr-2 text-blue-600" />
+      <CardHeader className="bg-gradient-to-r from-gray-50 to-brand-navy/5 border-b border-gray-200">
+        <CardTitle className="text-lg font-semibold text-gray-900 flex items-center" style={{ fontFamily: 'var(--font-display)' }}>
+          <Database className="h-5 w-5 mr-2 text-brand-navy" />
           Detailed Scoring Breakdown
         </CardTitle>
       </CardHeader>
@@ -369,10 +369,10 @@ export default function AnalysisPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="min-h-screen bg-gradient-to-br from-white to-surface-muted">
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-brand-navy" />
               <p className="text-gray-600 font-medium">Loading saved assessments...</p>
             </div>
           </div>
@@ -385,12 +385,12 @@ export default function AnalysisPage() {
   if (error) {
     return (
       <DashboardLayout>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="min-h-screen bg-gradient-to-br from-white to-surface-muted">
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-600" />
               <p className="text-red-600 mb-4">{error}</p>
-              <Button onClick={fetchSavedAssessments} className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={fetchSavedAssessments} className="bg-brand-navy hover:bg-brand-navy-dark">
                 Try Again
               </Button>
             </div>
@@ -402,14 +402,14 @@ export default function AnalysisPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-gradient-to-br from-white to-surface-muted">
         {/* Header Section */}
         <div className="bg-white shadow-sm border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="py-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">Performance Analysis</h1>
+                  <h1 className="text-3xl font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Performance Analysis</h1>
                   <p className="mt-1 text-sm text-gray-600">
                     Generate objective-based performance charts from saved assessments
                   </p>
@@ -429,8 +429,8 @@ export default function AnalysisPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Assessment Selection */}
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm mb-8">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-              <h3 className="text-lg font-semibold text-white flex items-center">
+            <div className="bg-gradient-to-r from-brand-navy to-brand-navy-dark px-6 py-4">
+              <h3 className="text-lg font-semibold text-white flex items-center" style={{ fontFamily: 'var(--font-display)' }}>
                 <Settings className="h-5 w-5 mr-2" />
                 Assessment Selection
               </h3>
@@ -467,7 +467,7 @@ export default function AnalysisPage() {
                     <Button 
                       onClick={generateCharts}
                       disabled={!selectedAssessment || generatingCharts}
-                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                      className="bg-brand-navy hover:bg-brand-navy-dark disabled:opacity-50"
                     >
                       {generatingCharts ? (
                         <>
@@ -486,11 +486,11 @@ export default function AnalysisPage() {
                   {/* Regular Dropdown */}
                   {showDropdown && (
                     <div 
-                      className="absolute z-50 w-full mt-1 bg-white border-2 border-blue-200 rounded-lg shadow-xl max-h-80 overflow-auto"
+                      className="absolute z-50 w-full mt-1 bg-white border-2 border-brand-navy/20 rounded-lg shadow-xl max-h-80 overflow-auto"
                       style={{ maxHeight: '320px' }}
                     >
-                      <div className="p-2 bg-blue-50 border-b border-blue-200">
-                        <div className="text-sm font-medium text-blue-900">
+                      <div className="p-2 bg-brand-navy/5 border-b border-brand-navy/20">
+                        <div className="text-sm font-medium text-brand-navy">
                           {filteredAssessments.length} assessment{filteredAssessments.length !== 1 ? 's' : ''} found
                         </div>
                       </div>
@@ -498,7 +498,7 @@ export default function AnalysisPage() {
                         filteredAssessments.map((assessment) => (
                           <div
                             key={assessment.id}
-                            className="px-4 py-4 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
+                            className="px-4 py-4 hover:bg-brand-navy/5 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors"
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -513,14 +513,14 @@ export default function AnalysisPage() {
                               <div className="flex-1">
                                 <div className="font-semibold text-gray-900 text-base">{assessment.name}</div>
                                 <div className="text-sm text-gray-600 flex items-center gap-2 mt-1">
-                                  <Building2 className="h-4 w-4 text-blue-600" />
+                                  <Building2 className="h-4 w-4 text-brand-navy" />
                                   <span className="font-medium">{assessment.org_unit_name}</span>
                                   <Calendar className="h-4 w-4 text-green-600 ml-2" />
                                   <span>{new Date(assessment.created_at).toLocaleDateString()}</span>
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1 flex items-center gap-4">
                                   <span className="flex items-center gap-1">
-                                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                    <span className="w-2 h-2 bg-brand-navy rounded-full"></span>
                                     {assessment.total_indicators} indicators
                                   </span>
                                   <span className="flex items-center gap-1">
@@ -530,7 +530,7 @@ export default function AnalysisPage() {
                                 </div>
                               </div>
                               <div className="ml-4">
-                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <div className="w-2 h-2 bg-brand-navy rounded-full"></div>
                               </div>
                             </div>
                           </div>
@@ -547,17 +547,17 @@ export default function AnalysisPage() {
 
                 {/* Selected Assessment Display */}
                 {selectedAssessment && (
-                  <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg shadow-sm">
+                  <div className="p-6 bg-gradient-to-r from-brand-navy/5 to-brand-navy/10 border-2 border-brand-navy/20 rounded-lg shadow-sm">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                          <div className="font-semibold text-blue-900 text-lg">Selected Assessment</div>
+                          <div className="font-semibold text-brand-navy text-lg">Selected Assessment</div>
                         </div>
                         <div className="text-base font-medium text-gray-900 mb-1">{selectedAssessment.name}</div>
                         <div className="text-sm text-gray-600 flex items-center gap-4 mb-2">
                           <span className="flex items-center gap-1">
-                            <Building2 className="h-4 w-4 text-blue-600" />
+                            <Building2 className="h-4 w-4 text-brand-navy" />
                             {selectedAssessment.org_unit_name}
                           </span>
                           <span className="flex items-center gap-1">
@@ -567,7 +567,7 @@ export default function AnalysisPage() {
                         </div>
                         <div className="flex items-center gap-4 text-sm text-gray-600">
                           <span className="flex items-center gap-1">
-                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                            <span className="w-2 h-2 bg-brand-navy rounded-full"></span>
                             {selectedAssessment.total_indicators} indicators
                           </span>
                           <span className="flex items-center gap-1">
@@ -602,7 +602,7 @@ export default function AnalysisPage() {
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-8">
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-brand-navy" />
                   <div className="text-lg font-medium text-gray-900">Generating Performance Charts</div>
                   <div className="text-sm text-gray-600">Please wait while we process your assessment data...</div>
                 </div>
@@ -630,9 +630,9 @@ export default function AnalysisPage() {
 
               {/* Individual Objective Charts */}
               <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200 px-6 py-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                    <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+                <div className="bg-gradient-to-r from-gray-50 to-brand-navy/5 border-b border-gray-200 px-6 py-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center" style={{ fontFamily: 'var(--font-display)' }}>
+                    <BarChart3 className="h-5 w-5 mr-2 text-brand-navy" />
                     Objective Performance
                   </h3>
                 </div>
@@ -664,9 +664,9 @@ export default function AnalysisPage() {
 
               {/* Overall Sector Score */}
               <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200 px-6 py-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                    <Target className="h-5 w-5 mr-2 text-blue-600" />
+                <div className="bg-gradient-to-r from-gray-50 to-brand-navy/5 border-b border-gray-200 px-6 py-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center" style={{ fontFamily: 'var(--font-display)' }}>
+                    <Target className="h-5 w-5 mr-2 text-brand-navy" />
                     Overall Sector Score
                   </h3>
                 </div>
@@ -694,27 +694,27 @@ export default function AnalysisPage() {
 
               {/* Summary */}
               <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200 px-6 py-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                    <TrendingUp className="h-5 w-5 mr-2 text-blue-600" />
+                <div className="bg-gradient-to-r from-gray-50 to-brand-navy/5 border-b border-gray-200 px-6 py-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center" style={{ fontFamily: 'var(--font-display)' }}>
+                    <TrendingUp className="h-5 w-5 mr-2 text-brand-navy" />
                     Performance Summary
                   </h3>
                 </div>
                 <div className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="text-center p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                      <div className="text-3xl font-bold text-blue-900">{typeof assessmentData.overall_score === 'number' ? assessmentData.overall_score.toFixed(1) : '0.0'}</div>
-                      <div className="text-sm text-blue-700 font-medium">Overall Score</div>
+                    <div className="text-center p-6 bg-gradient-to-br from-brand-navy/5 to-brand-navy/10 rounded-lg border border-brand-navy/20">
+                      <div className="text-3xl font-bold text-brand-navy">{typeof assessmentData.overall_score === 'number' ? assessmentData.overall_score.toFixed(1) : '0.0'}</div>
+                      <div className="text-sm text-brand-navy font-medium">Overall Score</div>
                     </div>
                     <div className="text-center p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg border border-green-200">
                       <div className="text-3xl font-bold text-green-900">{assessmentData.objectives.length}</div>
                       <div className="text-sm text-green-700 font-medium">Objectives Assessed</div>
                     </div>
-                    <div className="text-center p-6 bg-gradient-to-br from-purple-50 to-violet-50 rounded-lg border border-purple-200">
-                      <div className="text-3xl font-bold text-purple-900">
+                    <div className="text-center p-6 bg-gradient-to-br from-brand-teal/5 to-brand-teal/10 rounded-lg border border-brand-teal/20">
+                      <div className="text-3xl font-bold text-brand-teal">
                         {assessmentData.objectives.filter(obj => obj.score >= 3).length}
                       </div>
-                      <div className="text-sm text-purple-700 font-medium">Performing Well</div>
+                      <div className="text-sm text-brand-teal font-medium">Performing Well</div>
                     </div>
                   </div>
                 </div>

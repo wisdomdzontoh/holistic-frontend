@@ -142,6 +142,25 @@ export interface DHIS2OrgUnit {
 class AssessmentService {
   private baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
+  // Session-lifetime cache for slow-changing data (e.g. the org unit hierarchy),
+  // so remounting a page doesn't force a fresh round-trip to the backend/DHIS2.
+  private requestCache = new Map<string, { data: unknown; expiresAt: number }>();
+  private static readonly ORG_UNITS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+  private getCached<T>(key: string): T | undefined {
+    const entry = this.requestCache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.requestCache.delete(key);
+      return undefined;
+    }
+    return entry.data as T;
+  }
+
+  private setCached(key: string, data: unknown, ttlMs: number): void {
+    this.requestCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  }
+
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
     const config: RequestInit = {
       headers: {
@@ -291,6 +310,91 @@ class AssessmentService {
     return { blob, filename };
   }
 
+  /**
+   * Same export as exportHolisticExcelWithFilename, but kicks off an async job on
+   * the backend (returns immediately) and polls for completion, reporting real
+   * progress instead of a single opaque wait. Falls back cleanly if the job fails.
+   */
+  async exportHolisticExcelAsync(
+    params: {
+      org_unit_ids: string[];
+      org_unit_names?: string[];
+      periods: Period[];
+      include_scores?: boolean;
+      manual_entries?: Record<number, Record<string, number | null>>;
+      pre_calculated_scores?: Record<number, any>;
+    },
+    onProgress?: (percent: number, statusLabel: string) => void
+  ): Promise<{ blob: Blob; filename: string }> {
+    const formattedPeriods = params.periods.map(period => ({
+      name: period.name,
+      period_type: period.periodType,
+      start_date: period.startDate,
+      end_date: period.endDate,
+      code: period.code,
+    }));
+
+    const startResponse = await fetch(`${this.baseUrl}/assessments/holistic-assessment/export_excel_async/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        org_unit_ids: params.org_unit_ids,
+        org_unit_names: params.org_unit_names || [],
+        periods: formattedPeriods,
+        include_scores: params.include_scores ?? true,
+        manual_entries: params.manual_entries || {},
+        pre_calculated_scores: params.pre_calculated_scores || {},
+      }),
+    });
+
+    if (!startResponse.ok) {
+      throw new Error(`Failed to start export: ${startResponse.statusText}`);
+    }
+
+    const { job_id: jobId } = await startResponse.json();
+    onProgress?.(0, 'Export started...');
+
+    const pollIntervalMs = 1200;
+    const maxAttempts = 150; // ~3 minutes ceiling
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+
+      const statusResponse = await fetch(`${this.baseUrl.replace(/\/api$/, '')}/api/exports/jobs/${jobId}/status/`, {
+        credentials: 'include',
+      });
+      if (!statusResponse.ok) {
+        continue; // transient error - keep polling until maxAttempts
+      }
+      const statusData = await statusResponse.json();
+      onProgress?.(statusData.progress_percentage ?? 0, statusData.status_display ?? statusData.status);
+
+      if (statusData.status === 'completed') {
+        const downloadResponse = await fetch(
+          `${this.baseUrl}/assessments/holistic-assessment/download_export_result/?job_id=${jobId}`,
+          { credentials: 'include' }
+        );
+        if (!downloadResponse.ok) {
+          throw new Error(`Export completed but download failed: ${downloadResponse.statusText}`);
+        }
+        const contentDisposition = downloadResponse.headers.get('Content-Disposition');
+        let filename = `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+          if (filenameMatch && filenameMatch[1]) filename = filenameMatch[1];
+        }
+        const blob = await downloadResponse.blob();
+        return { blob, filename };
+      }
+
+      if (statusData.status === 'failed') {
+        throw new Error(statusData.error_message || 'Export job failed');
+      }
+    }
+
+    throw new Error('Export timed out - please try again');
+  }
+
   async getAssessmentPeriods(): Promise<AssessmentPeriod[]> {
     const response = await this.makeRequest('/configurations/assessment-periods/');
     // Handle different response structures
@@ -366,9 +470,21 @@ class AssessmentService {
     return this.makeRequest('/assessments/management/test-dhis2-connection/');
   }
 
-  async getOrgUnits(): Promise<OrgUnit[]> {
+  async getOrgUnits(forceRefresh: boolean = false): Promise<OrgUnit[]> {
+    const cacheKey = 'org_units_hierarchy';
+    if (!forceRefresh) {
+      const cached = this.getCached<OrgUnit[]>(cacheKey);
+      // Guard against a previously-cached malformed (non-array) response -
+      // `{}` is truthy in JS, so a plain `if (cached)` would trust it.
+      if (Array.isArray(cached) && cached.length > 0) return cached;
+    }
+
     const response = await this.makeRequest('/assessments/management/dhis2-org-units/?hierarchy=true&max_depth=3');
-    return response.org_units || [];
+    // response.org_units || [] doesn't catch a non-array truthy value like {} -
+    // validate the shape explicitly instead of trusting the backend response.
+    const orgUnits = Array.isArray(response.org_units) ? response.org_units : [];
+    this.setCached(cacheKey, orgUnits, AssessmentService.ORG_UNITS_CACHE_TTL_MS);
+    return orgUnits;
   }
 
   async getDHIS2OrgUnits(level?: number, parentId?: string, userOnly: boolean = false): Promise<DHIS2OrgUnit[]> {
@@ -384,7 +500,7 @@ class AssessmentService {
     }
     
     const response = await this.makeRequest(`/assessments/management/dhis2-org-units/?${params}`);
-    return response.org_units || [];
+    return Array.isArray(response.org_units) ? response.org_units : [];
   }
 
   async getDHIS2OrgUnitHierarchy(rootId?: string, maxDepth: number = 3): Promise<DHIS2OrgUnit[]> {
@@ -394,15 +510,15 @@ class AssessmentService {
       params.append('root_id', rootId);
     }
     params.append('max_depth', maxDepth.toString());
-    
+
     const response = await this.makeRequest(`/assessments/management/dhis2-org-units/?${params}`);
-    return response.org_units || [];
+    return Array.isArray(response.org_units) ? response.org_units : [];
   }
 
   async getDHIS2OrgUnitDescendants(orgUnitId: string): Promise<DHIS2OrgUnit[]> {
     try {
       const response = await this.makeRequest(`/dhis2-auth/org-units/${orgUnitId}/descendants/`);
-      return response.descendants || [];
+      return Array.isArray(response.descendants) ? response.descendants : [];
     } catch (error) {
       console.error('Error fetching DHIS2 org unit descendants:', error);
       return [];
@@ -412,7 +528,7 @@ class AssessmentService {
   async getDHIS2OrgUnitChildren(orgUnitId: string): Promise<DHIS2OrgUnit[]> {
     try {
       const response = await this.makeRequest(`/dhis2-auth/org-units/${orgUnitId}/children/`);
-      return response.children || [];
+      return Array.isArray(response.children) ? response.children : [];
     } catch (error) {
       console.error('Error fetching DHIS2 org unit children:', error);
       return [];
@@ -923,7 +1039,8 @@ export const periodsToDHIS2Format = (periods: Period[]): string[] => {
 export const calculateRealTimeScore = async (
   indicatorId: number,
   currentValue: number | null,
-  previousValue: number | null
+  previousValue: number | null,
+  signal?: AbortSignal
 ): Promise<{
   success: boolean;
   score_result?: {
@@ -954,11 +1071,12 @@ export const calculateRealTimeScore = async (
         indicator_id: indicatorId,
         current_value: currentValue,
         previous_value: previousValue
-      })
+      }),
+      signal
     });
 
     const data = await response.json();
-    
+
     if (!response.ok) {
       return {
         success: false,
@@ -970,7 +1088,10 @@ export const calculateRealTimeScore = async (
       success: true,
       score_result: data.score_result
     };
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw error; // let callers distinguish "superseded" from a real failure
+    }
     console.error('Error calculating real-time score:', error);
     return {
       success: false,

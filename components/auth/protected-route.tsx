@@ -24,7 +24,7 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
       fallback || (
         <div className="min-h-screen flex items-center justify-center bg-gray-200">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-32 w-32 border-b-2 mx-auto" style={{ borderColor: '#154360' }}></div>
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 mx-auto" style={{ borderColor: 'var(--brand-navy)' }}></div>
             <p className="mt-4 text-gray-600">Loading...</p>
           </div>
         </div>

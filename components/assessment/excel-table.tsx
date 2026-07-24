@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Database, Edit3, Calculator, CheckCircle2, Info, Loader2, Search, X } from 'lucide-react';
-import { AssessmentData, Period } from '@/lib/assessment-service';
+import { AssessmentData, Period, calculateRealTimeScore } from '@/lib/assessment-service';
 
 interface ExcelTableProps {
   multiPeriodData: AssessmentData[] | null;
@@ -47,6 +47,14 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
   const [isCalculatingScores, setIsCalculatingScores] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const manualEntriesRef = useRef<Record<string, string>>({});
+
+  // Live score preview: as the user types period values, debounce a call to the
+  // same backend scoring service used everywhere else (no scoring math is
+  // duplicated client-side) and update the Change/Gap/Score cells in place.
+  const [liveCalculatingIds, setLiveCalculatingIds] = useState<Set<number>>(new Set());
+  const liveScoreTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const liveScoreAbortControllers = useRef<Map<number, AbortController>>(new Map());
+  const LIVE_SCORE_DEBOUNCE_MS = 500;
 
   // Check if there are manual entries
   useEffect(() => {
@@ -197,21 +205,103 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
      }
    }, [multiPeriodData, selectedPeriods]);
 
+  // Latest vs previous period, chronologically - matches the semantics the
+  // backend export/bulk-calculation path already uses (periods[-1]/periods[-2]).
+  const getSortedPeriodKeys = () => {
+    return [...selectedPeriods]
+      .sort((a, b) => (a.code || a.name).localeCompare(b.code || b.name))
+      .map(p => p.code || p.name);
+  };
+
+  const triggerLiveScorePreview = (indicatorId: number, latestCellData: Record<string, CellData>) => {
+    const existingTimer = liveScoreTimers.current.get(indicatorId);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    const timer = setTimeout(async () => {
+      liveScoreTimers.current.delete(indicatorId);
+
+      const sortedPeriodKeys = getSortedPeriodKeys();
+      if (sortedPeriodKeys.length === 0) return;
+
+      const latestKey = sortedPeriodKeys[sortedPeriodKeys.length - 1];
+      const previousKey = sortedPeriodKeys.length > 1 ? sortedPeriodKeys[sortedPeriodKeys.length - 2] : null;
+
+      const parseCell = (periodKey: string | null) => {
+        if (!periodKey) return null;
+        const raw = latestCellData[`${indicatorId}_${periodKey}`]?.value;
+        if (raw === undefined || raw === null || raw.trim() === '') return null;
+        const parsed = parseFloat(raw);
+        return isNaN(parsed) ? null : parsed;
+      };
+
+      const currentValue = parseCell(latestKey);
+      const previousValue = parseCell(previousKey);
+
+      // The backend requires current_value - skip firing a call that would just 400
+      // (e.g. the user cleared the field, or hasn't reached the latest period yet).
+      if (currentValue === null) return;
+
+      // Abort any in-flight preview call for this indicator before starting a new one.
+      liveScoreAbortControllers.current.get(indicatorId)?.abort();
+      const controller = new AbortController();
+      liveScoreAbortControllers.current.set(indicatorId, controller);
+
+      setLiveCalculatingIds(prev => new Set(prev).add(indicatorId));
+      try {
+        const result = await calculateRealTimeScore(indicatorId, currentValue, previousValue, controller.signal);
+        if (controller.signal.aborted) return;
+
+        if (result.success && result.score_result) {
+          const { score, percent_change, target_gap } = result.score_result;
+          setCellData(prev => ({
+            ...prev,
+            [`${indicatorId}_score`]: { ...prev[`${indicatorId}_score`], value: score?.toString() ?? prev[`${indicatorId}_score`]?.value, isEditable: true, isDHIS2Data: false },
+            [`${indicatorId}_change`]: { ...prev[`${indicatorId}_change`], value: percent_change !== null && percent_change !== undefined ? `${percent_change}%` : prev[`${indicatorId}_change`]?.value, isEditable: false, isDHIS2Data: false },
+            [`${indicatorId}_gap`]: { ...prev[`${indicatorId}_gap`], value: target_gap !== null && target_gap !== undefined ? `${target_gap}%` : prev[`${indicatorId}_gap`]?.value, isEditable: false, isDHIS2Data: false },
+          }));
+          onScoreChange(indicatorId, score?.toString() ?? '');
+        }
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') {
+          console.error('Live score preview failed:', error);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLiveCalculatingIds(prev => {
+            const next = new Set(prev);
+            next.delete(indicatorId);
+            return next;
+          });
+        }
+      }
+    }, LIVE_SCORE_DEBOUNCE_MS);
+
+    liveScoreTimers.current.set(indicatorId, timer);
+  };
+
+  // Clean up any pending debounce timers / in-flight requests on unmount.
+  useEffect(() => {
+    return () => {
+      liveScoreTimers.current.forEach(timer => clearTimeout(timer));
+      liveScoreAbortControllers.current.forEach(controller => controller.abort());
+    };
+  }, []);
+
   const handleCellChange = async (cellKey: string, value: string) => {
     setCellData(prev => ({
       ...prev,
       [cellKey]: { ...prev[cellKey], value }
     }));
-    
+
     // Store manual entries in ref for preservation during calculation
     const cell = cellData[cellKey];
     if (cell && !cell.isDHIS2Data) {
       manualEntriesRef.current[cellKey] = value;
     }
-    
+
     // Parse cell key to get indicator ID and period/column
     const [indicatorId, column] = cellKey.split('_');
-    
+
     if (column === 'score') {
       onScoreChange(parseInt(indicatorId), value);
     } else if (column === 'remarks') {
@@ -220,6 +310,9 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
       }
     } else if (selectedPeriods.some(p => (p.code || p.name) === column)) {
       await onCellEdit(parseInt(indicatorId), column, value);
+      // Fire the debounced live score preview using the value the user just typed
+      // (cellData state hasn't necessarily flushed yet, so pass it explicitly).
+      triggerLiveScorePreview(parseInt(indicatorId), { ...cellData, [cellKey]: { ...cellData[cellKey], value } });
     }
   };
 
@@ -299,9 +392,9 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
   const getRowBackground = (type: string) => {
     switch (type) {
       case 'milestone':
-        return 'bg-yellow-50 border-l-4 border-l-yellow-400';
+        return 'bg-accent-gold-pale border-l-4 border-l-accent-gold';
       case 'objective':
-        return 'bg-orange-100';
+        return 'bg-accent-gold-pale';
       default:
         return 'bg-white';
     }
@@ -411,8 +504,8 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
           .print-gap-poor { background-color: #fee2e2 !important; }
           
           /* Row Background Colors for Print */
-          .print-row-objective { background-color: #fed7aa !important; }
-          .print-row-milestone { background-color: #fef3c7 !important; border-left: 4px solid #f59e0b !important; }
+          .print-row-objective { background-color: #fdf3dc !important; }
+          .print-row-milestone { background-color: #fdf3dc !important; border-left: 4px solid #b8860b !important; }
           
           /* Table Styling for Print */
           .print-table {
@@ -431,7 +524,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
           }
           
           .print-table th {
-            background-color: #154360 !important;
+            background-color: var(--brand-navy) !important;
             color: white !important;
             font-weight: bold !important;
             font-size: 9px !important;
@@ -505,34 +598,34 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
       </div>
     
       <div className="overflow-auto max-h-[calc(100vh-200px)]">
-        <table className="w-full border-collapse border border-gray-300 text-sm print-table">
+        <table className="w-full border-collapse border border-gray-200 text-sm print-table">
           <thead className="sticky top-0 z-10">
-            <tr style={{ backgroundColor: '#154360' }} className="text-white">
-              <th className="border border-gray-300 px-2 py-2 text-left font-medium bg-[#154360]" style={{ width: '50px' }}>
+            <tr style={{ backgroundColor: 'var(--brand-navy)' }} className="text-white">
+              <th className="border border-gray-200 px-2 py-2 text-left font-medium bg-brand-navy" style={{ width: '50px' }}>
                 #
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-left font-medium bg-[#154360]" style={{ width: '300px' }}>
+              <th className="border border-gray-200 px-2 py-2 text-left font-medium bg-brand-navy" style={{ width: '300px' }}>
                 Indicator
               </th>
               {/* Performance Trend columns */}
               {selectedPeriods.map((period) => (
-                <th key={period.name} className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '100px' }}>
+                <th key={period.name} className="border border-gray-200 px-2 py-2 text-center font-medium bg-brand-navy" style={{ width: '100px' }}>
                   {period.name}
                 </th>
               ))}
-              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '80px' }}>
+              <th className="border border-gray-200 px-2 py-2 text-center font-medium bg-brand-navy" style={{ width: '80px' }}>
                 Change
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '100px' }}>
+              <th className="border border-gray-200 px-2 py-2 text-center font-medium bg-brand-navy" style={{ width: '100px' }}>
                 P-T Gap Analysis
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '80px' }}>
+              <th className="border border-gray-200 px-2 py-2 text-center font-medium bg-brand-navy" style={{ width: '80px' }}>
                 Target
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '120px' }}>
+              <th className="border border-gray-200 px-2 py-2 text-center font-medium bg-brand-navy" style={{ width: '120px' }}>
                 Assessed score (-2, -1, 0 +1, +2)
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center font-medium bg-[#154360]" style={{ width: '100px' }}>
+              <th className="border border-gray-200 px-2 py-2 text-center font-medium bg-brand-navy" style={{ width: '100px' }}>
                 Remarks
               </th>
             </tr>
@@ -543,7 +636,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
             <React.Fragment key={objective.id}>
               {/* Objective Row */}
               <tr className={`${getRowBackground('objective')} ${getPrintRowClass('objective')}`}>
-                <td className="border border-gray-300 px-2 py-2 font-medium" colSpan={7 + selectedPeriods.length}>
+                <td className="border border-gray-200 px-2 py-2 font-medium" colSpan={7 + selectedPeriods.length}>
                   {objective.name}
                 </td>
               </tr>
@@ -553,15 +646,15 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                 .sort((a: any, b: any) => a.display_order - b.display_order)
                 .map((indicator: any, indIndex: number) => (
                 <tr key={indicator.id} className="hover:bg-gray-50">
-                  <td className="border border-gray-300 px-2 py-2 text-center font-medium">
+                  <td className="border border-gray-200 px-2 py-2 text-center font-medium">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="flex items-center justify-center gap-1 cursor-help">
                           {indicator.indicator_number || `${objIndex + 1}.${indicator.display_order || indIndex + 1}`}
                           {indicator.dhis2_uid ? (
-                            <Database className="h-3 w-3 text-[#1E8449]" />
+                            <Database className="h-3 w-3 text-brand-green" />
                           ) : (
-                            <Edit3 className="h-3 w-3 text-orange-600" />
+                            <Edit3 className="h-3 w-3 text-accent-gold" />
                           )}
                         </div>
                       </TooltipTrigger>
@@ -569,13 +662,13 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                         <div className="text-sm">
                           {indicator.dhis2_uid ? (
                             <div>
-                              <p className="font-medium text-[#1E8449]">DHIS2 Indicator</p>
+                              <p className="font-medium text-brand-green">DHIS2 Indicator</p>
                               <p className="text-xs text-gray-600">UID: {indicator.dhis2_uid}</p>
                               <p className="text-xs">Data fetched automatically from DHIS2</p>
                             </div>
                           ) : (
                             <div>
-                              <p className="font-medium text-orange-600">Manual Entry</p>
+                              <p className="font-medium text-accent-gold">Manual Entry</p>
                               <p className="text-xs">Data requires manual input</p>
                             </div>
                           )}
@@ -583,7 +676,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                       </TooltipContent>
                     </Tooltip>
                   </td>
-                  <td className="border border-gray-300 px-2 py-2">
+                  <td className="border border-gray-200 px-2 py-2">
                     <div className="text-xs">
                       {indicator.name}
                     </div>
@@ -596,7 +689,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                     const cell = cellData[cellKey];
                     
                     return (
-                      <td key={period.name} className="border border-gray-300 px-1 py-1">
+                      <td key={period.name} className="border border-gray-200 px-1 py-1">
                         {cell?.isEditable ? (
                           <Input
                             type="number"
@@ -604,7 +697,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                             inputMode="decimal"
                             value={cell?.value || ''}
                             onChange={(e) => handleCellChange(cellKey, e.target.value)}
-                            className="h-6 text-xs border-0 p-1 focus:ring-1 focus:ring-[#1E8449]"
+                            className="h-6 text-xs border-0 p-1 focus:ring-1 focus:ring-brand-green"
                             placeholder="Enter value"
                           />
                         ) : (
@@ -622,28 +715,28 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                   })}
                   
                               {/* Change column */}
-            <td className={`border border-gray-300 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))} ${getPrintChangeClass((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
+            <td className={`border border-gray-200 px-1 py-1 ${getChangeBg((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))} ${getPrintChangeClass((cellData[`${indicator.id}_change`]?.value || '').replace('%',''))}`}>
               <div className="text-xs text-center">
                 {cellData[`${indicator.id}_change`]?.value || ''}
               </div>
             </td>
             
             {/* P-T Gap Analysis column */}
-            <td className={`border border-gray-300 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))} ${getPrintGapClass((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
+            <td className={`border border-gray-200 px-1 py-1 ${getGapBg((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))} ${getPrintGapClass((cellData[`${indicator.id}_gap`]?.value || '').replace('%',''))}`}>
               <div className="text-xs text-center">
                 {cellData[`${indicator.id}_gap`]?.value || ''}
               </div>
             </td>
                   
                   {/* Target column */}
-                  <td className="border border-gray-300 px-1 py-1">
+                  <td className="border border-gray-200 px-1 py-1">
                     <div className="text-xs text-center">
                       {cellData[`${indicator.id}_target`]?.value || ''}
                     </div>
                   </td>
                   
                   {/* Assessed score column */}
-                  <td className={`border border-gray-300 px-1 py-1 ${getPrintScoreClass(cellData[`${indicator.id}_score`]?.value || '-2.00')}`}>
+                  <td className={`border border-gray-200 px-1 py-1 ${getPrintScoreClass(cellData[`${indicator.id}_score`]?.value || '-2.00')}`}>
                     {indicator.score?.isLoading ? (
                       <div className="h-6 text-xs text-center flex items-center justify-center" style={{ 
                         backgroundColor: '#6c757d',
@@ -653,29 +746,37 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                         Calculating...
                       </div>
                     ) : (
-                      <Select
-                        value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
-                        onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
-                      >
-                        <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-[#1E8449] font-bold" style={{ 
-                          backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
-                          color: 'black'
-                        }}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="-2">-2</SelectItem>
-                          <SelectItem value="-1">-1</SelectItem>
-                          <SelectItem value="0">0</SelectItem>
-                          <SelectItem value="1">1</SelectItem>
-                          <SelectItem value="2">2</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="relative">
+                        <Select
+                          value={cellData[`${indicator.id}_score`]?.value?.replace('.00', '') || '-2'}
+                          onValueChange={(value) => handleCellChange(`${indicator.id}_score`, `${value}.00`)}
+                        >
+                          <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-brand-green font-bold" style={{
+                            backgroundColor: getScoreColor(cellData[`${indicator.id}_score`]?.value || '-2.00'),
+                            color: 'black'
+                          }}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="-2">-2</SelectItem>
+                            <SelectItem value="-1">-1</SelectItem>
+                            <SelectItem value="0">0</SelectItem>
+                            <SelectItem value="1">1</SelectItem>
+                            <SelectItem value="2">2</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {liveCalculatingIds.has(indicator.id) && (
+                          <div
+                            className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-brand-teal animate-pulse"
+                            title="Recalculating score..."
+                          />
+                        )}
+                      </div>
                     )}
                   </td>
                   
                                      {/* Remarks column */}
-                   <td className="border border-gray-300 px-1 py-1">
+                   <td className="border border-gray-200 px-1 py-1">
                      <Input
                        className="h-6 text-xs border-0 p-1"
                        placeholder="Add remarks"
@@ -688,7 +789,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
               
               {/* Milestone row with score input */}
               <tr className={`${getRowBackground('milestone')} ${getPrintRowClass('milestone')}`}>
-                <td className="border border-gray-300 px-2 py-2 font-medium">
+                <td className="border border-gray-200 px-2 py-2 font-medium">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="cursor-help">
@@ -697,7 +798,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs p-3">
                       <div className="space-y-2">
-                        <div className="font-semibold text-sm text-blue-900">Milestone Score (MS)</div>
+                        <div className="font-semibold text-sm text-accent-gold">Milestone Score (MS)</div>
                         <div className="text-xs">
                           <p>Milestone scores are manually assigned based on evidence of implementation progress.</p>
                           <p className="mt-2 font-medium">Scoring:</p>
@@ -711,13 +812,13 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                     </TooltipContent>
                   </Tooltip>
                 </td>
-                <td className="border border-gray-300 px-2 py-2 font-medium">
+                <td className="border border-gray-200 px-2 py-2 font-medium">
                   {objective.milestone?.name || `Milestone for ${objective.name.replace('Objective', '')}`}
                 </td>
                 
                 {/* Performance Trend columns - empty for milestone */}
                 {selectedPeriods.map((period) => (
-                  <td key={period.name} className="border border-gray-300 px-1 py-1">
+                  <td key={period.name} className="border border-gray-200 px-1 py-1">
                     <div className="text-xs text-center text-gray-400">
                       -
                     </div>
@@ -725,33 +826,33 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                 ))}
                 
                 {/* Change column - empty for milestone */}
-                <td className="border border-gray-300 px-1 py-1">
+                <td className="border border-gray-200 px-1 py-1">
                   <div className="text-xs text-center text-gray-400">
                     -
                   </div>
                 </td>
                 
                 {/* P-T Gap Analysis column - empty for milestone */}
-                <td className="border border-gray-300 px-1 py-1">
+                <td className="border border-gray-200 px-1 py-1">
                   <div className="text-xs text-center text-gray-400">
                     -
                   </div>
                 </td>
                 
                 {/* Target column - empty for milestone */}
-                <td className="border border-gray-300 px-1 py-1">
+                <td className="border border-gray-200 px-1 py-1">
                   <div className="text-xs text-center text-gray-400">
                     -
                   </div>
                 </td>
                 
                 {/* Milestone score dropdown - properly aligned */}
-                <td className={`border border-gray-300 px-1 py-1 ${getPrintScoreClass(`${objective.milestone?.score || -2}.00`)}`}>
+                <td className={`border border-gray-200 px-1 py-1 ${getPrintScoreClass(`${objective.milestone?.score || -2}.00`)}`}>
                   <Select
                     value={objective.milestone?.score?.toString() || '-2'}
                     onValueChange={(value) => handleMilestoneScoreChange(objective.id, value)}
                   >
-                    <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-[#1E8449] font-bold" style={{ 
+                    <SelectTrigger className="h-6 text-xs border-0 p-1 text-center focus:ring-1 focus:ring-brand-green font-bold" style={{ 
                       backgroundColor: getScoreColor(`${objective.milestone?.score || -2}.00`),
                       color: 'black'
                     }}>
@@ -768,7 +869,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
                 </td>
                 
                 {/* Milestone remarks column */}
-                <td className="border border-gray-300 px-1 py-1">
+                <td className="border border-gray-200 px-1 py-1">
                   <Input
                     className="h-6 text-xs border-0 p-1"
                     placeholder="Add remarks"
@@ -781,7 +882,7 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
             ))
           ) : (
             <tr>
-              <td colSpan={7 + selectedPeriods.length} className="border border-gray-300 px-4 py-8 text-center text-gray-500">
+              <td colSpan={7 + selectedPeriods.length} className="border border-gray-200 px-4 py-8 text-center text-gray-500">
                 <div className="flex flex-col items-center gap-2">
                   <Search className="h-8 w-8 text-gray-300" />
                   <p>No indicators found matching "{searchTerm}"</p>

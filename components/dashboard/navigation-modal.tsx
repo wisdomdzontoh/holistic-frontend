@@ -15,7 +15,7 @@ const navigationItems = [
     href: "/dashboard",
     icon: LayoutDashboard,
     description: "Overview and reports",
-    color: "bg-[#1E8449]",
+    color: "bg-brand-navy",
     shortcut: "⌘D",
   },
   {
@@ -23,7 +23,7 @@ const navigationItems = [
     href: "/dashboard/assessment",
     icon: Target,
     description: "Create and manage assessments",
-    color: "bg-blue-900",
+    color: "bg-brand-green",
     shortcut: "⌘A",
   },
   {
@@ -31,7 +31,7 @@ const navigationItems = [
     href: "/dashboard/indicators",
     icon: FileText,
     description: "Manage indicator definitions",
-    color: "bg-[#C0392B]",
+    color: "bg-accent-gold",
     shortcut: "⌘I",
   },
   {
@@ -39,7 +39,7 @@ const navigationItems = [
     href: "/dashboard/analysis",
     icon: BarChart3,
     description: "Data analysis and insights",
-    color: "bg-[#1E8449]",
+    color: "bg-brand-teal",
     shortcut: "⌘L",
   },
 ]
@@ -120,11 +120,11 @@ export function NavigationModal({ isOpen, onClose }: NavigationModalProps) {
           {/* Header - Fixed */}
           <div className="border-b border-gray-200 p-6 bg-white flex-shrink-0">
             <div className="flex items-center gap-3 mb-4">
-                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1E8449] to-blue-900 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-brand-navy flex items-center justify-center">
                 <Command className="h-4 w-4 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Quick Navigation</h2>
+                <h2 className="text-lg font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Quick Navigation</h2>
                 <p className="text-sm text-gray-500">Search and navigate to any section</p>
               </div>
             </div>
@@ -134,7 +134,7 @@ export function NavigationModal({ isOpen, onClose }: NavigationModalProps) {
                 placeholder="Search apps, shortcuts, commands..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 h-12 border-gray-200 focus:border-[#1E8449] focus:ring-[#1E8449]/20 bg-white text-base"
+                className="pl-12 h-12 border-gray-200 focus:border-brand-green focus:ring-brand-green/20 bg-white text-base"
                 autoFocus
               />
             </div>
@@ -161,9 +161,9 @@ export function NavigationModal({ isOpen, onClose }: NavigationModalProps) {
                           className={cn(
                             "flex items-center gap-4 p-4 rounded-xl transition-all duration-200 group border",
                             "hover:shadow-lg hover:shadow-gray-200/50 hover:-translate-y-0.5",
-                            isSelected && "bg-[#1E8449]/10 border-[#1E8449]/20 shadow-md",
+                            isSelected && "bg-brand-green/10 border-brand-green/20 shadow-md",
                             !isSelected && "bg-white border-gray-100 hover:bg-gray-50 hover:border-gray-200",
-                            isActive && "ring-2 ring-[#1E8449]/20",
+                            isActive && "ring-2 ring-brand-green/20",
                           )}
                         >
                           <div
@@ -178,7 +178,7 @@ export function NavigationModal({ isOpen, onClose }: NavigationModalProps) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
                               <h4 className="font-semibold text-gray-900 text-sm truncate">{item.name}</h4>
-                              <kbd className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-500 font-mono">
+                              <kbd className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-500" style={{ fontFamily: 'var(--font-geist-mono)' }}>
                                 {item.shortcut}
                               </kbd>
                             </div>

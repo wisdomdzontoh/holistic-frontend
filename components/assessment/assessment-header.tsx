@@ -58,7 +58,7 @@ export default function AssessmentHeader({
               <button
                 onClick={onBulkScoreCalculation}
                 disabled={isCalculatingScores}
-                className="px-4 py-2 bg-gradient-to-r from-[#1E8449] to-[#27AE60] text-white rounded-md hover:from-[#27AE60] hover:to-[#2ECC71] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200 font-medium text-sm"
+                className="px-4 py-2 bg-gradient-to-r from-brand-green to-brand-green-light text-white rounded-md hover:from-brand-green-light hover:to-brand-green-light disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm hover:shadow-md transition-all duration-200 font-medium text-sm"
               >
                 {isCalculatingScores ? (
                   <>

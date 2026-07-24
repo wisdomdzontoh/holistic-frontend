@@ -50,13 +50,13 @@ export function DashboardSidebar() {
     <aside className={cn(
       "text-white transition-all duration-300 ease-in-out",
       collapsed ? "w-16" : "w-64"
-    )} style={{ backgroundColor: '#154360' }}>
+    )} style={{ backgroundColor: 'var(--brand-navy)' }}>
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: '#2E86AB' }}>
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--brand-teal)' }}>
           {!collapsed && (
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#2E86AB' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--brand-teal)' }}>
                 <Target className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -89,7 +89,7 @@ export function DashboardSidebar() {
                     ? "text-white"
                     : "text-white/80 hover:bg-white/10 hover:text-white"
                 )}
-                style={isActive ? { backgroundColor: '#2E86AB' } : {}}
+                style={isActive ? { backgroundColor: 'var(--brand-teal)' } : {}}
               >
                 <item.icon className="h-5 w-5" />
                 {!collapsed && (
@@ -109,7 +109,7 @@ export function DashboardSidebar() {
 
         {/* Footer */}
         {!collapsed && (
-          <div className="p-4 border-t" style={{ borderColor: '#2E86AB' }}>
+          <div className="p-4 border-t" style={{ borderColor: 'var(--brand-teal)' }}>
             <Link
               href="/login"
               className="flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-colors"
