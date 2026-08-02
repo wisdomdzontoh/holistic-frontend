@@ -98,9 +98,10 @@ export function LoginForm() {
       <main className="flex-1 flex items-center justify-center px-4 pb-12">
         <div className="w-full max-w-md">
           <div className="rounded-xl bg-white shadow-2xl p-8">
-            <h3 className="text-xl font-semibold text-ink mb-6" style={{ fontFamily: 'var(--font-display)' }}>
+            <h3 className="text-xl font-semibold text-ink mb-1" style={{ fontFamily: 'var(--font-display)' }}>
               Log in
             </h3>
+            <p className="text-sm text-ink-muted mb-6">Sign in with your DHIMS2 credentials to continue</p>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
                 <FormField
@@ -113,6 +114,7 @@ export function LoginForm() {
                         <Input
                           {...field}
                           type="text"
+                          placeholder="Enter your DHIMS2 username"
                           disabled={isLoading}
                           autoFocus
                           className="h-11 bg-brand-navy/[0.04] border-transparent focus-visible:bg-white focus-visible:border-brand-teal focus-visible:ring-brand-teal/30"
@@ -134,6 +136,7 @@ export function LoginForm() {
                           <Input
                             {...field}
                             type="password"
+                            placeholder="Enter your DHIMS2 password"
                             disabled={isLoading}
                             className="h-11 bg-brand-navy/[0.04] border-transparent pr-10 focus-visible:bg-white focus-visible:border-brand-teal focus-visible:ring-brand-teal/30"
                           />
