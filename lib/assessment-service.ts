@@ -479,7 +479,10 @@ class AssessmentService {
       if (Array.isArray(cached) && cached.length > 0) return cached;
     }
 
-    const response = await this.makeRequest('/assessments/management/dhis2-org-units/?hierarchy=true&max_depth=3');
+    // max_depth=5 covers this DHIS2 instance's full hierarchy (National through
+    // Facility) so a regional/district-level user's tree isn't cut off before
+    // reaching facilities.
+    const response = await this.makeRequest('/assessments/management/dhis2-org-units/?hierarchy=true&max_depth=5');
     // response.org_units || [] doesn't catch a non-array truthy value like {} -
     // validate the shape explicitly instead of trusting the backend response.
     const orgUnits = Array.isArray(response.org_units) ? response.org_units : [];
@@ -503,7 +506,7 @@ class AssessmentService {
     return Array.isArray(response.org_units) ? response.org_units : [];
   }
 
-  async getDHIS2OrgUnitHierarchy(rootId?: string, maxDepth: number = 3): Promise<DHIS2OrgUnit[]> {
+  async getDHIS2OrgUnitHierarchy(rootId?: string, maxDepth: number = 5): Promise<DHIS2OrgUnit[]> {
     const params = new URLSearchParams();
     params.append('hierarchy', 'true');
     if (rootId) {
