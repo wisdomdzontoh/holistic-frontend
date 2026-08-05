@@ -342,41 +342,52 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
     return '#FF0000';
   };
 
+  // Single source of truth for "what has the user manually typed right now" -
+  // cellData is ExcelTable's own state, never synced up to the parent page's
+  // assessmentData (onCellEdit is a display-only notification, not a data
+  // sync), so exporting/saving must read it from here rather than from
+  // whatever the parent thinks the data looks like.
+  const collectManualEntriesFromCells = (): Record<number, Record<string, number | null>> => {
+    const manualEntries: Record<number, Record<string, number | null>> = {};
+
+    Object.entries(cellData).forEach(([cellKey, cell]) => {
+      if (!cell.isDHIS2Data && cell.value.trim() !== '') {
+        const [indicatorId, periodKey] = cellKey.split('_');
+        // Only period columns are indicator data - skip synthetic keys like
+        // "<id>_score" / "<id>_remarks" that share the same cellData map.
+        if (!selectedPeriods.some(p => (p.code || p.name) === periodKey)) return;
+        const indicatorIdNum = parseInt(indicatorId);
+        const value = parseFloat(cell.value);
+
+        if (!isNaN(value)) {
+          if (!manualEntries[indicatorIdNum]) {
+            manualEntries[indicatorIdNum] = {};
+          }
+          manualEntries[indicatorIdNum][periodKey] = value;
+        }
+      }
+    });
+
+    return manualEntries;
+  };
+
   const handleBulkScoreCalculation = async () => {
     if (!onBulkScoreCalculation) return;
-    
+
     setIsCalculatingScores(true);
-    
+
     // Notify parent about calculating state
     if (onCalculatingStateChange) {
       onCalculatingStateChange(true);
     }
-    
-    try {
-      // Collect manual entries
-      const manualEntries: Record<number, Record<string, number | null>> = {};
-      
-      Object.entries(cellData).forEach(([cellKey, cell]) => {
-        if (!cell.isDHIS2Data && cell.value.trim() !== '') {
-          const [indicatorId, periodKey] = cellKey.split('_');
-          const indicatorIdNum = parseInt(indicatorId);
-          const value = parseFloat(cell.value);
-          
-          if (!isNaN(value)) {
-            if (!manualEntries[indicatorIdNum]) {
-              manualEntries[indicatorIdNum] = {};
-            }
-            manualEntries[indicatorIdNum][periodKey] = value;
-          }
-        }
-      });
 
-      await onBulkScoreCalculation(manualEntries);
+    try {
+      await onBulkScoreCalculation(collectManualEntriesFromCells());
     } catch (error) {
       console.error('Error calculating scores:', error);
     } finally {
       setIsCalculatingScores(false);
-      
+
       // Notify parent about calculating state
       if (onCalculatingStateChange) {
         onCalculatingStateChange(false);
@@ -386,8 +397,9 @@ const ExcelTable = forwardRef<{ triggerBulkCalculation: () => void }, ExcelTable
 
   // Expose methods to parent component via ref
   useImperativeHandle(ref, () => ({
-    triggerBulkCalculation: handleBulkScoreCalculation
-  }), [handleBulkScoreCalculation]);
+    triggerBulkCalculation: handleBulkScoreCalculation,
+    getManualEntries: collectManualEntriesFromCells
+  }), [handleBulkScoreCalculation, cellData, selectedPeriods]);
 
   const getRowBackground = (type: string) => {
     switch (type) {

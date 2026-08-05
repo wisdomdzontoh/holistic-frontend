@@ -67,7 +67,10 @@ export default function AssessmentPage() {
   const [exportProgress, setExportProgress] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isCalculatingScores, setIsCalculatingScores] = useState(false);
-  const excelTableRef = useRef<{ triggerBulkCalculation: () => void } | null>(null);
+  const excelTableRef = useRef<{
+    triggerBulkCalculation: () => void;
+    getManualEntries: () => Record<number, Record<string, number | null>>;
+  } | null>(null);
 
   // Handle calculating state changes
   const handleCalculatingStateChange = useCallback((isCalculating: boolean) => {
@@ -169,28 +172,13 @@ export default function AssessmentPage() {
 
   // Function to collect manual entries from the Excel table
   const collectManualEntries = (): Record<number, Record<string, number | null>> => {
-    const manualEntries: Record<number, Record<string, number | null>> = {};
-    
-    if (state.assessmentData && state.assessmentData.length > 0) {
-      state.assessmentData[0].objectives.forEach((objective: any) => {
-        objective.indicators.forEach((indicator: any) => {
-          if (indicator.data_values) {
-            Object.entries(indicator.data_values).forEach(([period, dataValue]: [string, any]) => {
-              // Check if this is a manual entry (has manual_override and it's not null)
-              if (dataValue && dataValue.manual_override !== undefined && dataValue.manual_override !== null) {
-                if (!manualEntries[indicator.id]) {
-                  manualEntries[indicator.id] = {};
-                }
-                // Use the period as the key (this could be period name or code)
-                manualEntries[indicator.id][period] = dataValue.manual_override;
-              }
-            });
-          }
-        });
-      });
-    }
-    
-    return manualEntries;
+    // ExcelTable owns the live edit state (cellData) - onCellEdit is a
+    // display-only notification, not a data sync, so state.assessmentData
+    // never reflects in-progress edits. Read straight from the table via the
+    // ref instead of a stale copy, so export/save always capture what's
+    // actually on screen right now (matches what "Calculate Scores" already
+    // did correctly - see ExcelTable.collectManualEntriesFromCells).
+    return excelTableRef.current?.getManualEntries() ?? {};
   };
 
     const handleExportExcel = async () => {
@@ -328,6 +316,27 @@ export default function AssessmentPage() {
         // If it's already a dictionary, use it as is
         indicatorDataDict = state.assessmentData;
       }
+
+      // Merge live manual edits into what's being saved - indicatorDataDict above
+      // comes from state.assessmentData, which (like export, see collectManualEntries)
+      // doesn't reflect in-progress table edits unless "Calculate Scores" happened
+      // first. Apply them here directly so a saved assessment's own data actually
+      // contains what's on screen - matters especially for bulk-generated
+      // assessments, whose "Download" button reads straight from this saved
+      // record rather than live browser state.
+      const liveManualEntries = collectManualEntries();
+      Object.entries(liveManualEntries).forEach(([indicatorId, periodValues]) => {
+        const indicator = indicatorDataDict[indicatorId];
+        if (!indicator) return;
+        if (!indicator.data_values) indicator.data_values = {};
+        Object.entries(periodValues).forEach(([periodKey, value]) => {
+          indicator.data_values[periodKey] = {
+            ...(indicator.data_values[periodKey] || {}),
+            value,
+            manual_override: value,
+          };
+        });
+      });
 
       if (isUpdate && assessmentId) {
         // Update existing assessment
