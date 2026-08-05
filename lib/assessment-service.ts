@@ -139,6 +139,40 @@ export interface DHIS2OrgUnit {
   children?: DHIS2OrgUnit[];
 }
 
+export interface DHIS2OrgUnitGroup {
+  id: string;
+  name: string;
+  shortName?: string;
+}
+
+export interface BulkAssessmentJobItemSummary {
+  id: number;
+  org_unit_id: string;
+  org_unit_name: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
+  status_display: string;
+  saved_assessment_id: number | null;
+  error_message: string;
+}
+
+export interface BulkAssessmentJobSummary {
+  id: number;
+  name: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';
+  status_display: string;
+  total_facilities: number;
+  processed_facilities: number;
+  succeeded_facilities: number;
+  failed_facilities: number;
+  progress_percentage: number;
+  error_message: string;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+const BULK_ASSESSMENT_TERMINAL_STATUSES = new Set(['completed', 'completed_with_errors', 'failed', 'cancelled']);
+
 class AssessmentService {
   private baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
@@ -393,6 +427,137 @@ class AssessmentService {
     }
 
     throw new Error('Export timed out - please try again');
+  }
+
+  async getDHIS2OrgUnitGroups(): Promise<DHIS2OrgUnitGroup[]> {
+    const cacheKey = 'dhis2_org_unit_groups';
+    const cached = this.getCached<DHIS2OrgUnitGroup[]>(cacheKey);
+    if (Array.isArray(cached)) return cached;
+
+    const response = await this.makeRequest('/assessments/management/dhis2-org-unit-groups/');
+    const groups = Array.isArray(response.groups) ? response.groups : [];
+    this.setCached(cacheKey, groups, AssessmentService.ORG_UNITS_CACHE_TTL_MS);
+    return groups;
+  }
+
+  /**
+   * Start a bulk assessment generation job - the backend resolves target
+   * facilities from the group/level (scoped to the current user's own DHIS2
+   * org unit access) and processes them sequentially in the background.
+   */
+  async startBulkAssessmentJob(params: {
+    org_unit_group_id: string;
+    org_unit_group_name?: string;
+    org_unit_level?: number;
+    org_unit_level_name?: string;
+    periods: Period[];
+  }): Promise<{ job_id: number; total_facilities: number }> {
+    const formattedPeriods = params.periods.map(period => ({
+      code: period.code,
+      name: period.name,
+    }));
+
+    const response = await fetch(`${this.baseUrl}/assessments/bulk-assessment-jobs/start/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        org_unit_group_id: params.org_unit_group_id,
+        org_unit_group_name: params.org_unit_group_name || '',
+        org_unit_level: params.org_unit_level ?? null,
+        org_unit_level_name: params.org_unit_level_name || '',
+        periods: formattedPeriods,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message || `Failed to start bulk generation: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async getBulkAssessmentJobStatus(jobId: number): Promise<{ job: BulkAssessmentJobSummary; items: BulkAssessmentJobItemSummary[] }> {
+    const response = await this.makeRequest(`/assessments/bulk-assessment-jobs/${jobId}/status/`);
+    return { job: response.job, items: response.items };
+  }
+
+  async cancelBulkAssessmentJob(jobId: number): Promise<void> {
+    await fetch(`${this.baseUrl}/assessments/bulk-assessment-jobs/${jobId}/cancel/`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  }
+
+  async getMyBulkAssessmentJobs(): Promise<BulkAssessmentJobSummary[]> {
+    const response = await this.makeRequest('/assessments/bulk-assessment-jobs/my_jobs/');
+    return Array.isArray(response.jobs) ? response.jobs : [];
+  }
+
+  /**
+   * Poll a bulk assessment job until it reaches a terminal status, calling
+   * onUpdate on every tick (not just at the end) so a checklist UI can
+   * re-render live. Unlike exportHolisticExcelAsync's ~3 minute ceiling, a
+   * multi-facility batch can legitimately run much longer, so this uses a
+   * longer interval and a much higher attempt ceiling (~30 minutes). Returns
+   * a stop function the caller should invoke on unmount to end polling early.
+   */
+  pollBulkAssessmentJob(
+    jobId: number,
+    onUpdate: (job: BulkAssessmentJobSummary, items: BulkAssessmentJobItemSummary[]) => void,
+    onError?: (error: Error) => void
+  ): () => void {
+    const pollIntervalMs = 2000;
+    const maxAttempts = 900; // ~30 minutes
+    let stopped = false;
+    let attempt = 0;
+
+    const poll = async () => {
+      if (stopped) return;
+      attempt += 1;
+      try {
+        const { job, items } = await this.getBulkAssessmentJobStatus(jobId);
+        if (stopped) return;
+        onUpdate(job, items);
+        if (BULK_ASSESSMENT_TERMINAL_STATUSES.has(job.status)) {
+          return;
+        }
+      } catch (error) {
+        // Transient network errors shouldn't stop the whole poll loop - keep
+        // trying until maxAttempts, same tolerance exportHolisticExcelAsync uses.
+        if (attempt >= maxAttempts) {
+          onError?.(error instanceof Error ? error : new Error('Polling failed'));
+          return;
+        }
+      }
+      if (!stopped && attempt < maxAttempts) {
+        setTimeout(poll, pollIntervalMs);
+      } else if (!stopped) {
+        onError?.(new Error('Stopped polling - this is taking longer than expected. The job is still running in the background.'));
+      }
+    };
+
+    poll();
+    return () => { stopped = true; };
+  }
+
+  /** Download an already-generated SavedAssessment (e.g. a bulk-job result) without re-fetching DHIS2. */
+  async exportSavedAssessmentExcel(assessmentId: number): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(
+      `${this.baseUrl}/assessments/holistic-assessment/export_saved_excel/?assessment_id=${assessmentId}`,
+      { credentials: 'include' }
+    );
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `assessment-${assessmentId}.xlsx`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (filenameMatch && filenameMatch[1]) filename = filenameMatch[1];
+    }
+    const blob = await response.blob();
+    return { blob, filename };
   }
 
   async getAssessmentPeriods(): Promise<AssessmentPeriod[]> {

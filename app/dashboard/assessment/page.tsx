@@ -9,6 +9,8 @@ import { OrgUnitSelectionModal } from '@/components/modals/org-unit-selection-mo
 import PeriodSelectionModal from '@/components/modals/period-selection-modal';
 import { OpenAssessmentModal } from '@/components/modals/open-assessment-modal';
 import { SaveAssessmentModal } from '@/components/modals/save-assessment-modal';
+import { BulkGenerateModal } from '@/components/modals/bulk-generate-modal';
+import { BulkGenerateProgress } from '@/components/modals/bulk-generate-progress';
 import ExcelTable from '@/components/assessment/excel-table';
 import AssessmentSidebar from '@/components/assessment/assessment-sidebar';
 import AssessmentHeader from '@/components/assessment/assessment-header';
@@ -53,6 +55,9 @@ export default function AssessmentPage() {
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isOpenAssessmentModalOpen, setIsOpenAssessmentModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [isBulkGenerateModalOpen, setIsBulkGenerateModalOpen] = useState(false);
+  const [isBulkProgressOpen, setIsBulkProgressOpen] = useState(false);
+  const [activeBulkJobId, setActiveBulkJobId] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingSavedAssessment, setIsLoadingSavedAssessment] = useState(false);
   const [isLoadingOrgUnits, setIsLoadingOrgUnits] = useState(false);
@@ -534,6 +539,9 @@ export default function AssessmentPage() {
           onExportExcel={handleExportExcel}
           onExportPDF={handleExportPDF}
           onOpenAssessmentModal={() => setIsOpenAssessmentModalOpen(true)}
+          onBulkGenerateModalOpen={() => setIsBulkGenerateModalOpen(true)}
+          activeBulkJobId={activeBulkJobId}
+          onReopenBulkProgress={() => setIsBulkProgressOpen(true)}
           onGenerateReport={handleGenerateReport}
           getOrgUnitDisplayNames={getOrgUnitDisplayNames}
           getPeriodDisplayNames={getPeriodDisplayNames}
@@ -607,6 +615,25 @@ export default function AssessmentPage() {
         existingAssessmentId={currentAssessmentId || undefined}
         existingAssessmentName={currentAssessmentName || undefined}
         isSaving={isSaving}
+      />
+
+      <BulkGenerateModal
+        isOpen={isBulkGenerateModalOpen}
+        onClose={() => setIsBulkGenerateModalOpen(false)}
+        onStarted={(jobId) => {
+          setActiveBulkJobId(jobId);
+          setIsBulkProgressOpen(true);
+        }}
+      />
+
+      <BulkGenerateProgress
+        isOpen={isBulkProgressOpen}
+        onClose={() => setIsBulkProgressOpen(false)}
+        jobId={activeBulkJobId}
+        onViewAssessment={(assessmentId) => {
+          setIsBulkProgressOpen(false);
+          handleOpenAssessment(assessmentId);
+        }}
       />
               </div>
               </div>

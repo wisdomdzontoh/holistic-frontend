@@ -18,7 +18,9 @@ import {
   ChevronRight,
   ChevronDown,
   Loader2,
-  FileDown
+  FileDown,
+  Layers,
+  ListChecks
 } from 'lucide-react';
 
 interface AssessmentSidebarProps {
@@ -40,6 +42,9 @@ interface AssessmentSidebarProps {
   onExportExcel: () => void;
   onExportPDF: () => void;
   onOpenAssessmentModal: () => void;
+  onBulkGenerateModalOpen: () => void;
+  activeBulkJobId: number | null;
+  onReopenBulkProgress: () => void;
   onGenerateReport: () => void;
   getOrgUnitDisplayNames: () => string[];
   getPeriodDisplayNames: () => string[];
@@ -64,6 +69,9 @@ export default function AssessmentSidebar({
   onExportExcel,
   onExportPDF,
   onOpenAssessmentModal,
+  onBulkGenerateModalOpen,
+  activeBulkJobId,
+  onReopenBulkProgress,
   onGenerateReport,
   getOrgUnitDisplayNames,
   getPeriodDisplayNames
@@ -305,6 +313,30 @@ export default function AssessmentSidebar({
                   <FileText className="h-4 w-4 mr-3" />
                   Open Saved
                 </Button>
+
+                {/* Bulk Generate Button */}
+                <Button
+                  onClick={onBulkGenerateModalOpen}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-brand-navy/25 text-brand-navy hover:bg-brand-navy/5 hover:border-brand-navy/40 transition-colors duration-200 h-12 rounded-xl font-medium"
+                >
+                  <Layers className="h-4 w-4 mr-3" />
+                  Bulk Generate
+                </Button>
+
+                {/* Reopen bulk progress - only visible once a bulk job has been started */}
+                {activeBulkJobId != null && (
+                  <Button
+                    onClick={onReopenBulkProgress}
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-brand-teal/25 text-brand-teal hover:bg-brand-teal/5 hover:border-brand-teal/40 transition-colors duration-200 h-12 rounded-xl font-medium"
+                  >
+                    <ListChecks className="h-4 w-4 mr-3" />
+                    View Bulk Progress
+                  </Button>
+                )}
               </div>
             )}
 
@@ -363,6 +395,26 @@ export default function AssessmentSidebar({
                 >
                   <FileText className="h-5 w-5" />
                 </Button>
+                <Button
+                  onClick={onBulkGenerateModalOpen}
+                  variant="outline"
+                  size="sm"
+                  className="w-10 h-10 p-0 border-brand-navy/25 text-brand-navy hover:bg-brand-navy/5 rounded-xl shadow-sm"
+                  title="Bulk Generate"
+                >
+                  <Layers className="h-5 w-5" />
+                </Button>
+                {activeBulkJobId != null && (
+                  <Button
+                    onClick={onReopenBulkProgress}
+                    variant="outline"
+                    size="sm"
+                    className="w-10 h-10 p-0 border-brand-teal/25 text-brand-teal hover:bg-brand-teal/5 rounded-xl shadow-sm"
+                    title="View Bulk Progress"
+                  >
+                    <ListChecks className="h-5 w-5" />
+                  </Button>
+                )}
               </div>
             )}
           </div>
