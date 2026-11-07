@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, Loader2, Circle, X, Download, Eye, Ban } from 'lucide-react';
+import { Ban, CheckCircle2, Circle, Download, Eye, Loader2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { FormDialog } from '@/components/common/form-dialog';
+import { StatusPill, type PillTone } from '@/components/common/status-pill';
+import { InlineNotice } from '@/components/common/inline-notice';
+import { TableSkeleton } from '@/components/common/skeletons';
 import {
   assessmentService,
   BulkAssessmentJobSummary,
@@ -19,6 +22,25 @@ interface BulkGenerateProgressProps {
   jobId: number | null;
   onViewAssessment: (assessmentId: string) => void;
 }
+
+type ItemStatus = BulkAssessmentJobItemSummary['status'];
+
+const ITEM_STATUS: Record<string, { label: string; tone: PillTone; icon: typeof CheckCircle2; spin?: boolean }> = {
+  completed: { label: 'Done', tone: 'success', icon: CheckCircle2 },
+  failed: { label: 'Failed', tone: 'error', icon: XCircle },
+  in_progress: { label: 'Working on it', tone: 'info', icon: Loader2, spin: true },
+  skipped: { label: 'Skipped', tone: 'neutral', icon: Ban },
+  pending: { label: 'Waiting', tone: 'pending', icon: Circle },
+};
+
+const JOB_TONE: Record<string, PillTone> = {
+  pending: 'pending',
+  in_progress: 'info',
+  completed: 'success',
+  completed_with_errors: 'warning',
+  failed: 'error',
+  cancelled: 'neutral',
+};
 
 export function BulkGenerateProgress({ isOpen, onClose, jobId, onViewAssessment }: BulkGenerateProgressProps) {
   const [job, setJob] = useState<BulkAssessmentJobSummary | null>(null);
@@ -51,9 +73,9 @@ export function BulkGenerateProgress({ isOpen, onClose, jobId, onViewAssessment 
     if (jobId == null) return;
     try {
       await assessmentService.cancelBulkAssessmentJob(jobId);
-      toast.info('Cancelling - facilities not yet started will be skipped');
+      toast.info("Stopping — facilities that haven't started yet will be skipped.");
     } catch {
-      toast.error('Failed to cancel the job');
+      toast.error("We couldn't stop the job. Try again.");
     }
   };
 
@@ -72,7 +94,7 @@ export function BulkGenerateProgress({ isOpen, onClose, jobId, onViewAssessment 
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error: any) {
-      toast.error(error?.message || 'Download failed');
+      toast.error(error?.message || "The download didn't work. Try again.");
     } finally {
       setDownloadingId(null);
     }
@@ -80,113 +102,92 @@ export function BulkGenerateProgress({ isOpen, onClose, jobId, onViewAssessment 
 
   const isRunning = job?.status === 'pending' || job?.status === 'in_progress';
 
-  const statusIcon = (status: BulkAssessmentJobItemSummary['status']) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-brand-green shrink-0" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500 shrink-0" />;
-      case 'in_progress':
-        return <Loader2 className="h-4 w-4 text-brand-teal animate-spin shrink-0" />;
-      case 'skipped':
-        return <Ban className="h-4 w-4 text-ink-muted shrink-0" />;
-      default:
-        return <Circle className="h-4 w-4 text-gray-300 shrink-0" />;
-    }
-  };
-
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-ink">Bulk generation progress</DialogTitle>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
+    <FormDialog
+      open={isOpen}
+      onOpenChange={(open) => !open && onClose()}
+      title="Group progress"
+      description="You can close this window — generation carries on in the background."
+      size="lg"
+      footer={
+        <>
+          {isRunning && (
+            <Button variant="destructive-outline" onClick={handleCancel}>
+              Stop remaining facilities
             </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
+    >
+      {!job ? (
+        <div className="space-y-4" aria-busy="true">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+            Loading progress…
           </div>
-        </DialogHeader>
-
-        {!job ? (
-          <div className="py-10 flex items-center justify-center text-ink-muted">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            Loading...
-          </div>
-        ) : (
-          <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-ink truncate">{job.name}</span>
-                <Badge variant={job.status === 'failed' ? 'destructive' : 'secondary'} className="font-normal shrink-0 ml-2">
-                  {job.status_display}
-                </Badge>
-              </div>
-              <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${job.progress_percentage}%`, backgroundColor: 'var(--brand-navy)' }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-ink-muted">
-                <span>{job.processed_facilities} / {job.total_facilities} processed</span>
-                <span>{job.succeeded_facilities} succeeded, {job.failed_facilities} failed</span>
-              </div>
-              {job.error_message && (
-                <p className="text-xs text-red-600">{job.error_message}</p>
-              )}
+          <TableSkeleton rows={4} columns={3} className="rounded-xl border border-border" />
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2.5 rounded-xl border border-border bg-surface-subtle p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate text-sm font-semibold text-foreground">{job.name}</span>
+              <StatusPill tone={JOB_TONE[job.status] ?? 'neutral'}>{job.status_display}</StatusPill>
             </div>
+            <Progress value={job.progress_percentage} aria-label="Overall progress" />
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>
+                <span className="font-clinical text-foreground">{job.processed_facilities}</span> of{' '}
+                <span className="font-clinical text-foreground">{job.total_facilities}</span> facilities done
+              </span>
+              <span>
+                <span className="font-clinical text-success">{job.succeeded_facilities}</span> worked ·{' '}
+                <span className="font-clinical text-error">{job.failed_facilities}</span> failed
+              </span>
+            </div>
+            {job.error_message && <InlineNotice tone="error">{job.error_message}</InlineNotice>}
+          </div>
 
-            <div className="flex-1 overflow-y-auto border rounded-lg divide-y">
-              {items.map(item => (
-                <div key={item.id} className="flex items-center gap-3 px-3 py-2.5">
-                  {statusIcon(item.status)}
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border" aria-label="Facilities">
+            {items.map(item => {
+              const status = ITEM_STATUS[item.status as ItemStatus] ?? ITEM_STATUS.pending;
+              const Icon = status.icon;
+              return (
+                <li key={item.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-ink truncate">{item.org_unit_name}</p>
-                    {item.error_message && (
-                      <p className="text-xs text-red-600 truncate">{item.error_message}</p>
-                    )}
+                    <p className="truncate text-sm font-medium text-foreground">{item.org_unit_name}</p>
+                    {item.error_message && <p className="truncate text-xs text-error">{item.error_message}</p>}
                   </div>
+                  <span className={`status-pill status-pill-${status.tone}`}>
+                    <Icon className={status.spin ? 'h-3 w-3 animate-spin' : 'h-3 w-3'} aria-hidden="true" />
+                    {status.label}
+                  </span>
                   {item.status === 'completed' && item.saved_assessment_id != null && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onViewAssessment(String(item.saved_assessment_id))}
-                      >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        View
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => onViewAssessment(String(item.saved_assessment_id))}>
+                        <Eye aria-hidden="true" />
+                        Open
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => handleDownload(item)}
                         disabled={downloadingId === item.id}
+                        aria-label={`Download Excel for ${item.org_unit_name}`}
                       >
-                        {downloadingId === item.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Download className="h-3.5 w-3.5" />
-                        )}
+                        {downloadingId === item.id ? <Loader2 className="animate-spin" /> : <Download />}
                       </Button>
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
-          {isRunning && (
-            <Button variant="outline" onClick={handleCancel}>
-              Cancel remaining
-            </Button>
-          )}
-          <Button onClick={onClose} variant="outline">
-            Close
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </FormDialog>
   );
 }

@@ -1,25 +1,26 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { assessmentService } from '@/lib/assessment-service';
-import { 
-  Trash2, 
-  ChevronLeft, 
-  ChevronRight, 
-  ArrowUpDown, 
-  Search,
-  FileText,
+import {
   Building2,
-  Calendar,
-  Clock,
-  Loader2,
-  RefreshCw
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  RefreshCw,
+  Search,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FormDialog } from '@/components/common/form-dialog';
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { EmptyState } from '@/components/common/empty-state';
+import { TableSkeleton } from '@/components/common/skeletons';
+import { assessmentService } from '@/lib/assessment-service';
+import { cn } from '@/lib/utils';
 
 interface SavedItem {
   id: string;
@@ -36,6 +37,21 @@ interface DHIS2OrgUnit {
   displayName: string;
   level: number;
   children?: DHIS2OrgUnit[];
+}
+
+type Ordering = 'name' | '-name' | 'created_at' | '-created_at';
+
+const ORDERING_LABELS: Record<Ordering, string> = {
+  '-created_at': 'Newest first',
+  created_at: 'Oldest first',
+  name: 'Name (A to Z)',
+  '-name': 'Name (Z to A)',
+};
+
+function formatDate(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB');
 }
 
 export function OpenAssessmentModal({
@@ -57,32 +73,27 @@ export function OpenAssessmentModal({
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{open:boolean,id?:string}>({open:false});
+  const [pendingDelete, setPendingDelete] = useState<SavedItem | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [count, setCount] = useState(0);
-  const [ordering, setOrdering] = useState<'name'|'-name'|'created_at'|'-created_at'>('-created_at');
-  const [owner, setOwner] = useState<'mine'>('mine'); // Users can only see their own assessments
+  const [ordering, setOrdering] = useState<Ordering>('-created_at');
+  const owner = 'mine' as const; // Users can only see their own assessments
   const abortRef = useRef<AbortController | null>(null);
 
-  // Function to get organization unit display name
-  const getOrgUnitDisplayName = (orgUnitId: string): string => {
-    // Recursive function to search for org unit in nested structure
-    const findOrgUnitRecursively = (units: DHIS2OrgUnit[], targetId: string): DHIS2OrgUnit | undefined => {
+  const getOrgUnitDisplayName = (id: string): string => {
+    const find = (units: DHIS2OrgUnit[]): DHIS2OrgUnit | undefined => {
       for (const unit of units) {
-        if (unit.id === targetId) {
-          return unit;
-        }
+        if (unit.id === id) return unit;
         if (unit.children && unit.children.length > 0) {
-          const found = findOrgUnitRecursively(unit.children, targetId);
+          const found = find(unit.children);
           if (found) return found;
         }
       }
       return undefined;
     };
-
-    const orgUnit = findOrgUnitRecursively(dhis2OrgUnitsFlat, orgUnitId);
-    return orgUnit ? (orgUnit.displayName || orgUnit.name) : orgUnitId;
+    const orgUnit = find(dhis2OrgUnitsFlat);
+    return orgUnit ? (orgUnit.displayName || orgUnit.name) : '';
   };
 
   const fetchData = async () => {
@@ -102,7 +113,7 @@ export function OpenAssessmentModal({
     } catch (e) {
       if ((e as any)?.name !== 'AbortError') {
         console.error('Failed to load saved assessments', e);
-        toast.error('Failed to load saved assessments');
+        toast.error("We couldn't load your saved assessments. Try again.");
       }
       setItems([]);
     } finally {
@@ -116,242 +127,229 @@ export function OpenAssessmentModal({
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  // Reset defaults on open
+  // Reset selection and fetch fresh when opening
   useEffect(() => {
     if (isOpen) {
       setSelectedId(null);
-      // Always fetch fresh when opening
       fetchData();
-    } else {
-      // optional: keep filters across opens; comment out to reset
-      // setSearchTerm(''); setFilter(''); setPage(1); setOrdering('-created_at'); setOwner('mine');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Fetch on parameter changes while open
   useEffect(() => {
     if (isOpen) fetchData();
-  }, [orgUnitId, page, pageSize, filter, ordering, owner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgUnitId, page, pageSize, filter, ordering]);
 
-  useEffect(()=>{ setPage(1); }, [filter, pageSize, ordering]); // owner is always 'mine'
+  useEffect(() => { setPage(1); }, [filter, pageSize, ordering]);
+
   const totalPages = Math.max(1, Math.ceil((count || 0) / pageSize));
-  const view = items;
+  const rangeStart = count === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, count);
+
+  const openSelected = () => {
+    if (!selectedId) return;
+    onOpenAssessment(selectedId);
+    onClose();
+  };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="bg-gradient-to-r from-white to-surface-muted border-b border-gray-200 flex-shrink-0">
-          <div className="px-6 pt-6 pb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-brand-navy/10 rounded-lg">
-                <FileText className="h-6 w-6 text-brand-navy" />
-              </div>
-              <DialogTitle className="text-2xl font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Open Saved Assessment</DialogTitle>
-            </div>
-            <p className="text-ink-muted">Browse and open your previously saved assessments</p>
-          </div>
-        </DialogHeader>
-        
-        <div className="flex-1 overflow-y-auto space-y-4 px-6 py-4 min-h-0">
-          {/* Search and Controls */}
-          <div className="flex items-center gap-3 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input 
-                placeholder="Search assessments by name or organization unit..." 
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 border-gray-300 focus:border-brand-teal focus:ring-brand-teal/40"
-              />
-            </div>
-            <select 
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-teal focus:ring-brand-teal/40 bg-white"
-              value={ordering} 
-              onChange={(e)=>setOrdering(e.target.value as any)}
-            >
-              <option value="-created_at">Newest First</option>
-              <option value="created_at">Oldest First</option>
-              <option value="name">Name (A-Z)</option>
-              <option value="-name">Name (Z-A)</option>
-            </select>
-            <Button 
-              variant="outline" 
-              onClick={()=>fetchData()}
-              className="border-gray-300 hover:bg-gray-50 hover:border-gray-400"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-
-          {/* Assessment Table */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gradient-to-r from-gray-50 to-gray-50 sticky top-0">
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left px-4 py-3 font-semibold text-ink">Assessment Name</th>
-                    <th className="text-left px-4 py-3 font-semibold text-ink">Organization Unit</th>
-                    <th className="text-left px-4 py-3 font-semibold text-ink">Created</th>
-                    <th className="text-left px-4 py-3 font-semibold text-ink">Last Modified</th>
-                    <th className="px-4 py-3 text-right font-semibold text-ink">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td className="px-4 py-8 text-center" colSpan={5}>
-                        <div className="flex items-center justify-center gap-2 text-ink-muted">
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                          Loading assessments...
-                        </div>
-                      </td>
-                    </tr>
-                  ) : view.length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-8 text-center" colSpan={5}>
-                        <div className="text-center text-ink-muted">
-                          <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                          <p className="text-lg font-medium">No saved assessments found</p>
-                          <p className="text-sm">Try adjusting your search or create a new assessment</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    view.map(item => (
-                      <tr 
-                        key={item.id} 
-                        className={`cursor-pointer transition-colors duration-200 ${
-                          selectedId === item.id 
-                            ? 'bg-brand-navy/5 border-l-4 border-l-brand-navy' 
-                            : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                        }`} 
-                        onClick={() => setSelectedId(item.id)}
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-brand-navy" />
-                            <span className="font-semibold text-ink">{item.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-brand-green" />
-                            <Badge variant="outline" className="bg-brand-green/10 text-brand-green border-brand-green/20">
-                              {getOrgUnitDisplayName(item.org_unit_id)}
-                            </Badge>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-ink-muted">
-                            <Calendar className="h-4 w-4" />
-                            <span>{new Date(item.created_at).toLocaleDateString()}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-ink-muted">
-                            <Clock className="h-4 w-4" />
-                            <span>{item.updated_at ? new Date(item.updated_at).toLocaleDateString() : 'Never'}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            title="Delete Assessment"
-                            className="ml-auto p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors duration-200"
-                            onClick={(e)=>{ e.stopPropagation(); setConfirmDelete({open:true,id:item.id}); }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Pagination Controls */}
-          <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-ink-muted">Rows per page:</span>
-              <select
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-brand-teal focus:ring-brand-teal/40 bg-white"
-                value={pageSize}
-                onChange={(e)=>{ setPageSize(parseInt(e.target.value,10)); setPage(1); }}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-              <span className="text-sm text-ink-muted font-medium">{count} total assessments</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
-                onClick={()=>setPage(p=>Math.max(1,p-1))}
-                disabled={page<=1}
-                title="Previous Page"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="px-3 py-2 text-sm font-medium text-ink">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                className="p-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
-                onClick={()=>setPage(p=>Math.min(totalPages,p+1))}
-                disabled={page>=totalPages}
-                title="Next Page"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons - Fixed at bottom */}
-        <div className="flex justify-end gap-3 pt-4 px-6 pb-4 border-t bg-background flex-shrink-0">
-          <Button 
-            variant="outline" 
-            onClick={onClose}
-            className="border-gray-300 text-ink hover:bg-gray-50 hover:border-gray-400"
-          >
+    <FormDialog
+      open={isOpen}
+      onOpenChange={(open) => !open && onClose()}
+      title="Open a saved assessment"
+      description="Choose one of your saved assessments to carry on working on it."
+      size="xl"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={() => {
-              if (!selectedId) return;
-              onOpenAssessment(selectedId);
-              onClose();
-            }}
-            disabled={!selectedId}
-            className="bg-gradient-to-r bg-brand-navy text-white hover:bg-brand-navy-dark shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-2"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Open Assessment
+          <Button onClick={openSelected} disabled={!selectedId}>
+            <FolderOpen aria-hidden="true" />
+            Open assessment
+          </Button>
+        </>
+      }
+    >
+      <div className="overflow-hidden rounded-xl border border-border">
+        {/* Toolbar band */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-subtle px-4 py-3">
+          <div className="relative w-full max-w-sm flex-1">
+            <label htmlFor="saved-search" className="sr-only">Search saved assessments</label>
+            <Input
+              id="saved-search"
+              placeholder="Search by name or facility"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pr-9"
+            />
+            <Search className="pointer-events-none absolute top-1/2 right-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          </div>
+          <Select value={ordering} onValueChange={(v) => setOrdering(v as Ordering)}>
+            <SelectTrigger className="w-40" aria-label="Sort by">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(ORDERING_LABELS) as Ordering[]).map((key) => (
+                <SelectItem key={key} value={key}>{ORDERING_LABELS[key]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="secondary" onClick={() => fetchData()} disabled={loading}>
+            <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden="true" />
+            Refresh
           </Button>
         </div>
 
-        {/* Delete Confirmation Modal */}
-        <ConfirmModal
-          isOpen={confirmDelete.open}
-          onClose={()=>setConfirmDelete({open:false})}
-          title="Delete Assessment"
-          message="Are you sure you want to delete this saved assessment? This action cannot be undone and all associated data will be permanently removed."
-          confirmText="Delete Assessment"
-          onConfirm={async ()=>{
-            if (!confirmDelete.id) return;
-            await assessmentService.deleteAssessment({ assessment_id: confirmDelete.id });
-            await fetchData();
-            toast.success('Assessment deleted successfully');
-          }}
-        />
-      </DialogContent>
-    </Dialog>
+        {/* Table */}
+        {loading && items.length === 0 ? (
+          <TableSkeleton rows={5} columns={5} />
+        ) : items.length === 0 ? (
+          filter ? (
+            <EmptyState
+              illustration="no-results"
+              title={`No saved assessment matches “${filter}”`}
+              description="Check the spelling, or search by facility name instead."
+              action={{ label: 'Clear search', onClick: () => setSearchTerm('') }}
+            />
+          ) : (
+            <EmptyState
+              illustration="assessment"
+              title="No saved assessments yet"
+              description="Generate a report and select “Save assessment” — it will then appear here."
+            />
+          )
+        ) : (
+          <div className={cn('overflow-x-auto transition-opacity', loading && 'opacity-60')}>
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-surface-subtle">
+                <tr className="border-b border-border text-xs text-foreground">
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Assessment</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Facility</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Created</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Last changed</th>
+                  <th scope="col" className="w-14 px-4 py-2.5"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => {
+                  const isSelected = selectedId === item.id;
+                  return (
+                    <tr
+                      key={item.id}
+                      className={cn('table-row-interactive border-b border-border/60', isSelected && 'table-row-selected')}
+                      onClick={() => setSelectedId(item.id)}
+                      onDoubleClick={() => {
+                        onOpenAssessment(item.id);
+                        onClose();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') openSelected();
+                        if (e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedId(item.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      aria-selected={isSelected}
+                    >
+                      <td className="px-4 py-3">
+                        <span className={cn('font-medium', isSelected ? 'text-primary' : 'text-foreground')}>{item.name}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 text-foreground">
+                          <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          {getOrgUnitDisplayName(item.org_unit_id) || item.org_unit_name || item.org_unit_id}
+                        </span>
+                      </td>
+                      <td className="font-clinical px-4 py-3 text-muted-foreground">{formatDate(item.created_at)}</td>
+                      <td className="font-clinical px-4 py-3 text-muted-foreground">
+                        {item.updated_at ? formatDate(item.updated_at) : <span className="font-sans text-text-disabled">Not changed</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive hover:bg-error-bg hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDelete(item);
+                          }}
+                          aria-label={`Delete ${item.name}`}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Footer: range + pagination */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span>
+              Showing <span className="font-clinical text-foreground">{rangeStart}–{rangeEnd}</span> of{' '}
+              <span className="font-clinical text-foreground">{count}</span>
+            </span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(parseInt(v, 10)); setPage(1); }}>
+              <SelectTrigger className="h-8 w-20" aria-label="Rows per page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="hidden sm:inline">per page</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="icon-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} aria-label="Previous page">
+              <ChevronLeft />
+            </Button>
+            <span className="text-muted-foreground">
+              Page <span className="font-clinical text-foreground">{page}</span> of <span className="font-clinical text-foreground">{totalPages}</span>
+            </span>
+            <Button variant="secondary" size="icon-sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} aria-label="Next page">
+              <ChevronRight />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title={`Delete “${pendingDelete?.name ?? ''}”?`}
+        description="This can't be undone. The saved values, scores and remarks will be removed for good."
+        cancelLabel="Keep assessment"
+        confirmLabel="Yes, delete assessment"
+        pendingLabel="Deleting…"
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          try {
+            await assessmentService.deleteAssessment({ assessment_id: pendingDelete.id });
+          } catch (error) {
+            console.error('Failed to delete assessment', error);
+            toast.error("We couldn't delete that assessment. Try again in a moment.");
+            throw error;
+          }
+          if (selectedId === pendingDelete.id) setSelectedId(null);
+          toast.success(`Deleted “${pendingDelete.name}”.`);
+          await fetchData();
+        }}
+      />
+    </FormDialog>
   );
 }
 
+/** Small "name this assessment" prompt. */
 export function NameAssessmentModal({
   isOpen,
   onClose,
@@ -366,55 +364,37 @@ export function NameAssessmentModal({
   const [name, setName] = useState(defaultName || '');
   useEffect(() => setName(defaultName || ''), [defaultName, isOpen]);
 
+  const submit = () => {
+    if (name.trim()) {
+      onConfirm(name.trim());
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Name this assessment</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Input value={name} onChange={(e)=>setName(e.target.value)} placeholder="Enter a descriptive name" />
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button className="text-white" style={{backgroundColor:'var(--brand-navy)'}} onClick={()=>{ if(name.trim()){ onConfirm(name.trim()); onClose(); } }}>Save</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      open={isOpen}
+      onOpenChange={(open) => !open && onClose()}
+      title="Name this assessment"
+      size="sm"
+      onSubmit={submit}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={!name.trim()}>Save name</Button>
+        </>
+      }
+    >
+      <div className="space-y-1.5">
+        <label htmlFor="assessment-name-prompt" className="text-sm font-medium text-foreground">Name</label>
+        <Input
+          id="assessment-name-prompt"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Ho Municipal Hospital — 2025 review"
+          autoFocus
+        />
+      </div>
+    </FormDialog>
   );
 }
-
-export function ConfirmModal({
-  isOpen,
-  onClose,
-  title,
-  message,
-  confirmText = 'Confirm',
-  onConfirm,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  message: string;
-  confirmText?: string;
-  onConfirm: () => void;
-}){
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <p>{message}</p>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button className="text-white" style={{backgroundColor:'var(--brand-navy)'}} onClick={()=>{onConfirm(); onClose();}}>{confirmText}</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-

@@ -15,7 +15,6 @@ import ExcelTable from '@/components/assessment/excel-table';
 import AssessmentSidebar from '@/components/assessment/assessment-sidebar';
 import AssessmentHeader from '@/components/assessment/assessment-header';
 import AssessmentMainContent from '@/components/assessment/assessment-main-content';
-import { DashboardHeader } from '@/components/dashboard/dashboard-header';
 import { toast } from 'sonner';
 
 interface State {
@@ -93,8 +92,8 @@ export default function AssessmentPage() {
         setState(prev => ({ ...prev, dhis2OrgUnitsFlat: orgUnits }));
     } catch (error) {
         console.error('Error fetching org units:', error);
-        setState(prev => ({ ...prev, error: 'Failed to fetch organization units' }));
-        toast.error('Failed to fetch organization units. Please refresh the page.');
+        setState(prev => ({ ...prev, error: "We couldn't load your facilities from DHIMS2. Refresh the page to try again." }));
+        toast.error("We couldn't load your facilities from DHIMS2. Refresh the page to try again.");
       } finally {
         setIsLoadingOrgUnits(false);
       }
@@ -107,7 +106,7 @@ export default function AssessmentPage() {
 
   const handleGenerateReport = useCallback(async () => {
     if (state.selectedOrgUnits.length === 0 || state.selectedPeriods.length === 0) {
-      setState(prev => ({ ...prev, error: 'Please select at least one organization unit and period' }));
+      setState(prev => ({ ...prev, error: 'Choose at least one facility and one period first.' }));
       return;
     }
 
@@ -115,7 +114,7 @@ export default function AssessmentPage() {
         ...prev, 
         isGenerating: true, 
       loadingProgress: 0,
-      loadingMessage: 'Initializing assessment...',
+      loadingMessage: 'Getting ready…',
       error: null 
         }));
 
@@ -129,7 +128,7 @@ export default function AssessmentPage() {
       setState(prev => ({
         ...prev,
         loadingProgress: 20,
-        loadingMessage: 'Fetching DHIS2 data...' 
+        loadingMessage: 'Fetching data from DHIMS2 and scoring it…' 
       }));
 
       const data = await assessmentService.getMultiPeriodAssessmentData({
@@ -142,7 +141,7 @@ export default function AssessmentPage() {
       setState(prev => ({ 
         ...prev, 
         loadingProgress: 100,
-        loadingMessage: 'Assessment completed successfully!' 
+        loadingMessage: 'Done — opening the report…' 
       }));
 
       setTimeout(() => {
@@ -154,7 +153,7 @@ export default function AssessmentPage() {
           loadingProgress: 0,
           loadingMessage: ''
       }));
-        toast.success('Assessment report generated successfully!');
+        toast.success('Report ready. Review the scores, then save or download it.');
       }, 500);
 
     } catch (error) {
@@ -162,11 +161,11 @@ export default function AssessmentPage() {
       setState(prev => ({ 
         ...prev, 
         isGenerating: false,
-        error: 'Failed to generate assessment report',
+        error: "We couldn't generate the report. Check your connection and try again.",
         loadingProgress: 0,
         loadingMessage: ''
       }));
-          toast.error('Failed to generate assessment report. Please try again.');
+          toast.error("We couldn't generate the report. Check your connection and try again.");
     }
   }, [state.selectedOrgUnits, state.selectedPeriods, state.dhis2OrgUnitsFlat, manualEntriesData, preCalculatedScores]);
 
@@ -188,7 +187,7 @@ export default function AssessmentPage() {
         }
 
       setIsExporting(true);
-      setExportProgress('Preparing export...');
+      setExportProgress('Preparing the Excel file…');
 
     try {
       const orgUnitNames = state.selectedOrgUnits.map(orgUnitId => {
@@ -209,7 +208,7 @@ export default function AssessmentPage() {
           pre_calculated_scores: preCalculatedScores,
         },
         (percent, statusLabel) => {
-          setExportProgress(percent >= 100 ? 'Preparing download...' : `${statusLabel} (${percent}%)`);
+          setExportProgress(percent >= 100 ? 'Starting the download…' : `${statusLabel} (${percent}%)`);
         }
       );
 
@@ -224,12 +223,12 @@ export default function AssessmentPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       
-      toast.success('Excel file exported successfully!');
+      toast.success('Excel file downloaded.');
 
       } catch (error: any) {
       console.error('Error exporting assessment to Excel:', error);
       setState(prev => ({ ...prev, error: 'Failed to export assessment to Excel' }));
-      toast.error('Failed to export Excel file. Please try again.');
+      toast.error("We couldn't create the Excel file. Try again in a moment.");
       } finally {
         setIsExporting(false);
         setExportProgress('');
@@ -239,13 +238,13 @@ export default function AssessmentPage() {
   const handleExportPDF = () => {
     if (!state.assessmentData) {
       setState(prev => ({ ...prev, error: 'No assessment data to export' }));
-      toast.error('No assessment data to export');
+      toast.error('Generate a report first, then print it.');
       return;
     }
 
     // Trigger print functionality
+    // Opens the browser print dialog — choose "Save as PDF" there.
     window.print();
-    toast.success('PDF export initiated! Check your print dialog.');
   };
 
   const handleBulkScoreCalculation = async (manualEntries: Record<number, Record<string, number | null>>) => {
@@ -270,12 +269,12 @@ export default function AssessmentPage() {
         assessmentData: updatedData 
       }));
       
-      toast.success('Scores calculated successfully for manual entries!');
+      toast.success('Scores updated with the values you entered.');
       
     } catch (error) {
       console.error('Error calculating scores:', error);
       setState(prev => ({ ...prev, error: 'Failed to calculate scores for manual entries' }));
-      toast.error('Failed to calculate scores for manual entries. Please try again.');
+      toast.error("We couldn't recalculate the scores. Try again in a moment.");
     }
   };
 
@@ -354,7 +353,7 @@ export default function AssessmentPage() {
             manual_entries: manualEntriesData,
           }
         });
-        toast.success('Assessment updated successfully!');
+        toast.success('Assessment updated.');
       } else {
         // Save new assessment
         await assessmentService.saveAssessment({
@@ -370,11 +369,10 @@ export default function AssessmentPage() {
             manual_entries: manualEntriesData,
           }
         });
-        toast.success('Assessment saved successfully!');
+        toast.success('Assessment saved. You can open it again from "Open a saved assessment".');
       }
 
       setState(prev => ({ ...prev, error: null }));
-      console.log('Assessment saved successfully');
 
     } catch (error) {
       console.error('Error saving assessment:', error);
@@ -403,19 +401,7 @@ export default function AssessmentPage() {
       };
 
       const orgUnit = findOrgUnitRecursively(state.dhis2OrgUnitsFlat, id);
-      
-      // Debug: Log the org unit structure
-      if (orgUnit) {
-        console.log('Org unit found:', { id, orgUnit });
-        console.log('Available properties:', Object.keys(orgUnit));
-        console.log('displayName:', orgUnit.displayName);
-        console.log('name:', orgUnit.name);
-        console.log('display_name:', orgUnit.display_name);
-      } else {
-        console.log('Org unit not found for ID:', id);
-        console.log('Available org units:', state.dhis2OrgUnitsFlat);
-      }
-      
+
       // Try different possible property names for the display name
       return orgUnit ? (
         orgUnit.displayName || 
@@ -503,16 +489,15 @@ export default function AssessmentPage() {
       setCurrentAssessmentId(savedAssessment.id);
       setCurrentAssessmentName(savedAssessment.name);
 
-      toast.success(`Assessment "${savedAssessment.name}" loaded successfully!`);
-      console.log('Assessment loaded successfully:', savedAssessment.name);
+      toast.success(`Opened "${savedAssessment.name}".`);
       
     } catch (error) {
       console.error('Error loading saved assessment:', error);
       setState(prev => ({
         ...prev,
-        error: 'Failed to load saved assessment. Please try again.' 
+        error: "We couldn't open that assessment. Try again in a moment." 
       }));
-      toast.error('Failed to load saved assessment. Please try again.');
+      toast.error("We couldn't open that assessment. Try again in a moment.");
     } finally {
       setIsLoadingSavedAssessment(false);
       setIsOpenAssessmentModalOpen(false);
@@ -520,14 +505,9 @@ export default function AssessmentPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
-      {/* Dashboard Header */}
-      <div className="no-print">
-        <DashboardHeader user={user} />
-          </div>
-      
-      {/* Main Content with Sidebar */}
-      <div className="flex flex-1 overflow-hidden">
+    // Full-bleed workspace inside the app shell: set-up panel + sheet.
+    <div className="print-auto flex min-h-0 flex-1 overflow-hidden">
+      <div className="print-auto flex min-h-0 flex-1 overflow-hidden">
         {/* Left Sidebar - Configuration Panel */}
         <AssessmentSidebar
           sidebarExpanded={state.sidebarExpanded}
@@ -557,14 +537,15 @@ export default function AssessmentPage() {
         />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Configuration Bar */}
+      <div className="print-auto flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Toolbar band */}
         <AssessmentHeader
           selectedOrgUnits={state.selectedOrgUnits}
           selectedPeriods={state.selectedPeriods}
           indicatorSourceFilter={indicatorSourceFilter}
           isCalculatingScores={isCalculatingScores}
           onBulkScoreCalculation={handleBulkScoreCalculationWrapper}
+          isDataLoaded={state.isDataLoaded}
         />
 
         {/* Main Content */}

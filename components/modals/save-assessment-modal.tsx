@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { FilePlus2, Loader2, PenLine, Save } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Save, Plus, Edit } from 'lucide-react';
+import { FormDialog, FormDialogSection } from '@/components/common/form-dialog';
+import { InlineNotice } from '@/components/common/inline-notice';
 
 interface SaveAssessmentModalProps {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export function SaveAssessmentModal({
 
   const handleSave = async () => {
     if (!assessmentName.trim()) {
-      setError('Please enter an assessment name');
+      setError('Give the assessment a name so you can find it later.');
       return;
     }
 
@@ -52,8 +53,8 @@ export function SaveAssessmentModal({
     try {
       await onSave(assessmentName.trim(), saveMode === 'update', existingAssessmentId);
       onClose();
-    } catch (error) {
-      setError('Failed to save assessment. Please try again.');
+    } catch {
+      setError("The assessment wasn't saved. Your work is still on screen — try again.");
     }
   };
 
@@ -63,112 +64,80 @@ export function SaveAssessmentModal({
     }
   };
 
+  const isUpdate = saveMode === 'update';
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md max-h-[50vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            {saveMode === 'update' ? (
-              <>
-                <Edit className="h-5 w-5 text-brand-green" />
-                Update Assessment
-              </>
-            ) : (
-              <>
-                <Save className="h-5 w-5 text-brand-green" />
-                Save Assessment
-              </>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-2">
-          {/* Save Mode Selection */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Save Mode</Label>
-            <RadioGroup
-              value={saveMode}
-              onValueChange={(value) => setSaveMode(value as 'new' | 'update')}
-              className="flex flex-col space-y-2"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="new" id="new" />
-                <Label htmlFor="new" className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Save as New Assessment
-                </Label>
-              </div>
-              {existingAssessmentId && (
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="update" id="update" />
-                  <Label htmlFor="update" className="flex items-center gap-2">
-                    <Edit className="h-4 w-4" />
-                    Update Existing Assessment
-                  </Label>
-                </div>
-              )}
-            </RadioGroup>
-          </div>
-
-          {/* Assessment Name Input */}
-          <div className="space-y-2">
-            <Label htmlFor="assessment-name" className="text-sm font-medium">
-              Assessment Name
-            </Label>
-            <Input
-              id="assessment-name"
-              value={assessmentName}
-              onChange={(e) => setAssessmentName(e.target.value)}
-              placeholder="Enter assessment name..."
-              disabled={isSaving}
-            />
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="text-sm text-red-600 bg-red-50 p-2 rounded-md">
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* Action Buttons - Fixed at bottom */}
-        <div className="flex justify-end gap-2 pt-4 mt-4 border-t bg-background flex-shrink-0">
-          <Button
-            variant="outline"
-            onClick={handleClose}
-            disabled={isSaving}
-          >
+    <FormDialog
+      open={isOpen}
+      onOpenChange={(open) => !open && handleClose()}
+      title={isUpdate ? 'Update saved assessment' : 'Save assessment'}
+      description="Saving keeps the values, scores and remarks so you can open them again or analyse them later."
+      size="sm"
+      onSubmit={handleSave}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={handleClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isSaving || !assessmentName.trim()}
-            className="bg-brand-green hover:bg-brand-green/90"
-          >
+          <Button type="submit" disabled={isSaving || !assessmentName.trim()}>
             {isSaving ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {saveMode === 'update' ? 'Updating...' : 'Saving...'}
+                <Loader2 className="animate-spin" aria-hidden="true" />
+                {isUpdate ? 'Updating…' : 'Saving…'}
               </>
             ) : (
               <>
-                {saveMode === 'update' ? (
-                  <>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Update
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </>
-                )}
+                <Save aria-hidden="true" />
+                {isUpdate ? 'Update assessment' : 'Save assessment'}
               </>
             )}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      {existingAssessmentId && (
+        <FormDialogSection title="How to save">
+          <RadioGroup
+            value={saveMode}
+            onValueChange={(value) => setSaveMode(value as 'new' | 'update')}
+            className="gap-2"
+          >
+            <label className="choice-option">
+              <RadioGroupItem value="update" id="save-update" />
+              <PenLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Update “{existingAssessmentName}”
+                <span className="block text-xs font-normal text-muted-foreground">Replaces what was saved before.</span>
+              </span>
+            </label>
+            <label className="choice-option">
+              <RadioGroupItem value="new" id="save-new" />
+              <FilePlus2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                Save as a new assessment
+                <span className="block text-xs font-normal text-muted-foreground">Keeps the earlier one as it was.</span>
+              </span>
+            </label>
+          </RadioGroup>
+        </FormDialogSection>
+      )}
+
+      <div className="space-y-1.5">
+        <label htmlFor="assessment-name" className="text-sm font-medium text-foreground">
+          Assessment name
+        </label>
+        <Input
+          id="assessment-name"
+          value={assessmentName}
+          onChange={(e) => setAssessmentName(e.target.value)}
+          placeholder="e.g. Ho Municipal Hospital — 2025 review"
+          disabled={isSaving}
+          aria-invalid={!!error && !assessmentName.trim()}
+          autoFocus
+        />
+      </div>
+
+      {error && <InlineNotice tone="error">{error}</InlineNotice>}
+    </FormDialog>
   );
 }

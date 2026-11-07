@@ -1,304 +1,302 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { DashboardLayout } from '@/components/layout/dashboard-layout';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Database, Download, PenLine, Search, X, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { PageContainer } from '@/components/layouts/dashboard-shell';
+import { PageCard } from '@/components/layouts/page-card';
+import { StatusPill } from '@/components/common/status-pill';
+import { EmptyState } from '@/components/common/empty-state';
+import { ErrorState } from '@/components/common/error-state';
+import { TableSkeleton } from '@/components/common/skeletons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  FileText, 
-  Search, 
-  Plus, 
-  Download,
-  Filter, 
-  Loader2,
-  AlertCircle
-} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { indicatorService, Indicator } from '@/lib/indicator-service';
-import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+
+type FilterType = 'all' | 'active' | 'inactive' | 'dhis2' | 'calculated';
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: 'All indicators',
+  active: 'Active only',
+  inactive: 'Inactive only',
+  dhis2: 'From DHIMS2',
+  calculated: 'Calculated',
+};
+
+interface ObjectiveGroup {
+  id: number;
+  name: string;
+  indicators: Indicator[];
+}
+
+const COLUMN_COUNT = 8;
 
 export default function IndicatorsPage() {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [indicators, setIndicators] = useState<Indicator[]>([]);
-  const [objectives, setObjectives] = useState<Array<{
-    id: number;
-    name: string;
-    indicators: Indicator[];
-  }>>([]);
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [objectives, setObjectives] = useState<ObjectiveGroup[]>([]);
 
-  useEffect(() => {
-    fetchIndicators();
-  }, []);
-
-  const fetchIndicators = async () => {
+  const fetchIndicators = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      
+      setFailed(false);
       const data = await indicatorService.getIndicatorsForDefinitions();
       setObjectives(data.objectives);
-      
-      // Flatten all indicators for search functionality
-      const allIndicators = data.objectives.flatMap(obj => obj.indicators);
-      setIndicators(allIndicators);
-      
     } catch (err) {
       console.error('Failed to fetch indicators:', err);
-      setError('Failed to load indicator definitions. Please try again.');
-      toast.error('Failed to load indicator definitions');
+      setFailed(true);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Filter indicators based on search term and filter type
-  const getFilteredObjectives = () => {
-    return objectives.map(objective => {
-      const filteredIndicators = objective.indicators.filter(indicator => {
-        const matchesSearch = searchTerm === '' || 
-          indicator.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          indicator.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          indicator.indicator_number.toLowerCase().includes(searchTerm.toLowerCase());
-        
-        const matchesFilter = filterType === 'all' || 
-          (filterType === 'active' && indicator.is_active) ||
-          (filterType === 'inactive' && !indicator.is_active) ||
-          (filterType === 'dhis2' && indicator.dhis2_uid) ||
-          (filterType === 'calculated' && indicator.indicator_type === 'calculated');
-        
-        return matchesSearch && matchesFilter;
-      });
-      
-      return {
+  useEffect(() => {
+    fetchIndicators();
+  }, [fetchIndicators]);
+
+  const totalIndicators = useMemo(
+    () => objectives.reduce((sum, obj) => sum + obj.indicators.length, 0),
+    [objectives]
+  );
+
+  const filteredObjectives = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return objectives
+      .map((objective) => ({
         ...objective,
-        indicators: filteredIndicators
-      };
-    }).filter(objective => objective.indicators.length > 0);
+        indicators: objective.indicators
+          .filter((indicator) => {
+            const matchesSearch =
+              term === '' ||
+              indicator.name?.toLowerCase().includes(term) ||
+              indicator.description?.toLowerCase().includes(term) ||
+              indicator.indicator_number?.toLowerCase().includes(term);
+
+            const matchesFilter =
+              filterType === 'all' ||
+              (filterType === 'active' && indicator.is_active) ||
+              (filterType === 'inactive' && !indicator.is_active) ||
+              (filterType === 'dhis2' && !!indicator.dhis2_uid) ||
+              (filterType === 'calculated' && indicator.indicator_type === 'calculated');
+
+            return matchesSearch && matchesFilter;
+          })
+          .sort((a, b) => a.display_order - b.display_order),
+      }))
+      .filter((objective) => objective.indicators.length > 0);
+  }, [objectives, searchTerm, filterType]);
+
+  const filteredCount = filteredObjectives.reduce((sum, obj) => sum + obj.indicators.length, 0);
+  const isFiltered = searchTerm.trim() !== '' || filterType !== 'all';
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterType('all');
   };
 
-  const filteredObjectives = getFilteredObjectives();
-  const totalIndicators = indicators.length;
-  const filteredIndicatorsCount = filteredObjectives.flatMap(obj => obj.indicators).length;
-
-  if (loading) {
-  return (
-      <DashboardLayout>
-        <div className="p-6 bg-gray-200 min-h-screen">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-600" />
-              <p className="text-gray-600">Loading indicator definitions...</p>
-                </div>
-              </div>
-            </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (error) {
-                return (
-      <DashboardLayout>
-        <div className="p-6 bg-gray-200 min-h-screen">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <AlertCircle className="h-8 w-8 mx-auto mb-4 text-red-600" />
-              <p className="text-red-600 mb-4">{error}</p>
-              <Button onClick={fetchIndicators} style={{ backgroundColor: 'var(--brand-navy)' }}>
-                Try Again
-              </Button>
-                      </div>
-                    </div>
-                  </div>
-      </DashboardLayout>
-    );
-  }
+  const handleDownloadCsv = () => {
+    const rows: string[][] = [
+      ['Objective', 'Number', 'Indicator', 'Definition', 'Numerator', 'Denominator', 'Calculation', 'Source of data', 'Target', 'DHIMS2 ID', 'Active'],
+    ];
+    filteredObjectives.forEach((objective) => {
+      objective.indicators.forEach((ind) => {
+        rows.push([
+          objective.name,
+          ind.indicator_number ?? '',
+          ind.name ?? '',
+          ind.description ?? '',
+          ind.numerator ?? '',
+          ind.denominator ?? '',
+          ind.formula ?? '',
+          ind.source_of_data ?? '',
+          ind.target_display || (ind.target_value != null ? String(ind.target_value) : ''),
+          ind.dhis2_uid ?? '',
+          ind.is_active ? 'Yes' : 'No',
+        ]);
+      });
+    });
+    const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `indicator-definitions-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Downloaded ${filteredCount} ${filteredCount === 1 ? 'indicator' : 'indicators'}`);
+  };
 
   return (
-    <DashboardLayout>
-      <div className="p-6 bg-gray-200 min-h-screen">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Indicator Definitions</h1>
-              <p className="text-gray-600 mt-2">
-                Comprehensive list of health indicators and their definitions
-              </p>
-            </div>
-                        <div className="flex items-center space-x-3">
-              <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export Excel
-              </Button>
-              <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-            </Button>
+    <PageContainer>
+      <PageCard
+        title="Indicator definitions"
+        description="What each health indicator measures, how it is calculated and the target it is scored against."
+        actions={
+          <Button variant="outline" onClick={handleDownloadCsv} disabled={loading || failed || filteredCount === 0}>
+            <Download aria-hidden="true" />
+            Download CSV
+          </Button>
+        }
+      />
+
+      <section className="overflow-hidden rounded-xl border border-border bg-card">
+        {/* Toolbar band */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-subtle px-4 py-3">
+          <div className="relative w-full max-w-sm">
+            <label htmlFor="indicator-search" className="sr-only">
+              Search indicators
+            </label>
+            <Input
+              id="indicator-search"
+              placeholder="Search by name, number or definition"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pr-9"
+            />
+            {searchTerm ? (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <Search className="pointer-events-none absolute top-1/2 right-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            )}
           </div>
-          </div>
+          <Select value={filterType} onValueChange={(v) => setFilterType(v as FilterType)}>
+            <SelectTrigger className="w-48" aria-label="Filter indicators">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(FILTER_LABELS) as FilterType[]).map((key) => (
+                <SelectItem key={key} value={key}>
+                  {FILTER_LABELS[key]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!loading && !failed && (
+            <span className="ml-auto text-sm text-muted-foreground">
+              Showing <span className="font-clinical text-foreground">{filteredCount}</span> of{' '}
+              <span className="font-clinical text-foreground">{totalIndicators}</span>
+            </span>
+          )}
         </div>
 
-        {/* Search and Filters */}
-        <div className="mb-6 bg-white p-4 rounded-lg shadow-sm">
-          <div className="flex items-center space-x-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search indicators..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-medium">Filter by:</span>
-            <select
-                className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-              >
-                <option value="all">All Indicators</option>
-                <option value="active">Active Only</option>
-                <option value="inactive">Inactive Only</option>
-                <option value="dhis2">DHIS2 Indicators</option>
-                <option value="calculated">Calculated Indicators</option>
-            </select>
-            </div>
-          </div>
-          </div>
-
-        {/* Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        {loading ? (
+          <TableSkeleton rows={8} columns={6} />
+        ) : failed ? (
+          <ErrorState
+            title="We couldn't load the indicator definitions"
+            message="Check your internet connection and try again."
+            onRetry={fetchIndicators}
+          />
+        ) : filteredObjectives.length === 0 ? (
+          isFiltered ? (
+            <EmptyState
+              illustration="no-results"
+              title="Nothing matches these filters"
+              description="Try a different search, or show all indicators."
+              action={{ label: 'Clear filters', onClick: clearFilters }}
+            />
+          ) : (
+            <EmptyState
+              illustration="empty-list"
+              title="No indicators set up yet"
+              description="Indicators are added by an administrator. Once they are, their definitions will appear here."
+            />
+          )
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr style={{ backgroundColor: 'var(--brand-navy)' }} className="text-white">
-                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-sm" style={{ width: '8%' }}>
-                    #
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '20%' }}>
-                    Indicator
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '20%' }}>
-                    Definition
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '15%' }}>
-                    Numerator (N)
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '15%' }}>
-                    Denominator (D)
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold text-sm" style={{ width: '10%' }}>
-                    Calculation
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold text-sm" style={{ width: '12%' }}>
-                    Source of Data
-                  </th>
-                  <th className="border border-gray-300 px-4 py-3 text-right font-semibold text-sm" style={{ width: '10%' }}>
-                    Target
-                  </th>
+            <table className="w-full min-w-[1100px] text-sm">
+              <thead className="bg-surface-subtle">
+                <tr className="border-b border-border text-xs font-medium text-foreground">
+                  <th scope="col" className="w-16 px-4 py-2.5 text-left font-medium">#</th>
+                  <th scope="col" className="w-[20%] px-4 py-2.5 text-left font-medium">Indicator</th>
+                  <th scope="col" className="w-[22%] px-4 py-2.5 text-left font-medium">Definition</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Numerator</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Denominator</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Calculation</th>
+                  <th scope="col" className="px-4 py-2.5 text-left font-medium">Source of data</th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-medium">Target</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredObjectives.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="border border-gray-300 px-4 py-8 text-center text-gray-500">
-                      {searchTerm || filterType !== 'all' 
-                        ? 'No indicators match your search criteria' 
-                        : 'No indicators found. Add some indicators to get started.'
-                      }
-                    </td>
-                  </tr>
-                ) : (
-                  filteredObjectives.map((objective) => (
-                    <React.Fragment key={objective.id}>
-                      {/* Objective Header Row */}
-                      <tr className="bg-accent-gold-pale">
-                        <td colSpan={8} className="border border-gray-300 px-4 py-3 font-semibold text-gray-900">
-                          {objective.name}
-                        </td>
-                      </tr>
-                      
-                      {/* Indicator Rows */}
-                      {objective.indicators
-                        .sort((a, b) => a.display_order - b.display_order)
-                        .map((indicator) => (
-                        <tr key={indicator.id} className="hover:bg-gray-50">
-                          {/* Number column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm text-center">
-                            <div className={`font-medium ${!indicator.is_active ? 'text-red-600' : 'text-gray-900'}`}>
-                              {indicator.indicator_number || `${objective.id}.${indicator.display_order || indicator.id}`}
-                            </div>
+                {filteredObjectives.map((objective) => (
+                  <React.Fragment key={objective.id}>
+                    <tr className="sheet-row-objective border-b border-border">
+                      <th scope="colgroup" colSpan={COLUMN_COUNT} className="px-4 py-2.5 text-left text-sm font-semibold">
+                        {objective.name}
+                      </th>
+                    </tr>
+                    {objective.indicators.map((indicator) => {
+                      const inactive = !indicator.is_active;
+                      return (
+                        <tr key={indicator.id} className="border-b border-border/60 align-top transition-colors hover:bg-surface-muted/60">
+                          <td className="font-clinical px-4 py-3 text-muted-foreground">
+                            {indicator.indicator_number || `${objective.id}.${indicator.display_order || indicator.id}`}
                           </td>
-                          {/* Indicator name column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm">
-                            <div className={`font-medium ${!indicator.is_active ? 'text-red-600' : 'text-gray-900'}`}>
-                              {indicator.name}
+                          <td className="px-4 py-3">
+                            <p className={cn('font-medium', inactive ? 'text-muted-foreground' : 'text-foreground')}>{indicator.name}</p>
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {indicator.dhis2_uid ? (
+                                <StatusPill tone="info" icon={Database} title={`DHIMS2 ID: ${indicator.dhis2_uid}`}>
+                                  DHIMS2
+                                </StatusPill>
+                              ) : (
+                                <StatusPill tone="neutral" icon={PenLine}>
+                                  Entered by hand
+                                </StatusPill>
+                              )}
+                              {inactive && (
+                                <StatusPill tone="error" icon={XCircle}>
+                                  Inactive
+                                </StatusPill>
+                              )}
                             </div>
                             {indicator.dhis2_uid && (
-                              <div className="text-xs text-brand-teal mt-1">
-                                DHIS2: {indicator.dhis2_uid}
-                              </div>
+                              <p className="font-clinical mt-1 text-xs text-muted-foreground">{indicator.dhis2_uid}</p>
                             )}
                           </td>
-                          {/* Definition column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm">
-                            <div className={`${!indicator.is_active ? 'text-red-600' : 'text-gray-700'}`}>
-                              {indicator.description || 'No definition available'}
-                            </div>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {indicator.description || <NotRecorded label="No definition yet" />}
                           </td>
-                          {/* Numerator column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
-                            {indicator.numerator || 'N/A'}
-                          </td>
-                          {/* Denominator column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
-                            {indicator.denominator || 'N/A'}
-                          </td>
-                          {/* Calculation column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm text-center text-gray-700">
-                            {indicator.formula || 'N/A'}
-                          </td>
-                          {/* Source of Data column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm text-gray-700">
-                            {indicator.source_of_data || 'N/A'}
-                          </td>
-                          {/* Target column */}
-                          <td className="border border-gray-300 px-4 py-3 text-sm text-right">
-                            <div className={`font-medium ${!indicator.is_active ? 'text-red-600' : 'text-gray-900'}`}>
-                              {indicator.target_display || (indicator.target_value ? indicator.target_value.toString() : 'N/A')}
-                            </div>
+                          <td className="px-4 py-3 text-foreground">{indicator.numerator || <NotRecorded />}</td>
+                          <td className="px-4 py-3 text-foreground">{indicator.denominator || <NotRecorded />}</td>
+                          <td className="font-clinical px-4 py-3 text-foreground">{indicator.formula || <NotRecorded />}</td>
+                          <td className="px-4 py-3 text-foreground">{indicator.source_of_data || <NotRecorded />}</td>
+                          <td className="font-clinical px-4 py-3 text-right font-medium text-foreground">
+                            {indicator.target_display || (indicator.target_value != null ? indicator.target_value.toString() : <NotRecorded />)}
                           </td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  ))
-                )}
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>
-          </div>
-
-        {/* Table Info */}
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-                      <div>
-            Showing {filteredIndicatorsCount} of {totalIndicators} indicators
-                      </div>
-          <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-red-600 rounded"></div>
-              <span>Inactive indicators are highlighted in red</span>
-                      </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-brand-teal rounded"></div>
-              <span>DHIS2 indicators show UID</span>
-                        </div>
-                      </div>
-                      </div>
-          </div>
-    </DashboardLayout>
+        )}
+      </section>
+    </PageContainer>
   );
-} 
+}
+
+function NotRecorded({ label = '—' }: { label?: string }) {
+  return <span className="text-text-disabled">{label}</span>;
+}
+
+function csvCell(value: string): string {
+  const v = value.replace(/\r?\n/g, ' ');
+  return /[",]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}

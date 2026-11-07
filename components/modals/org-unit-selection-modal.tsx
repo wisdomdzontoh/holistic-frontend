@@ -1,17 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
+import { FormDialog } from '@/components/common/form-dialog';
+import { EmptyState } from '@/components/common/empty-state';
+import { cn } from '@/lib/utils';
+import {
   X,
   ChevronRight,
   ChevronDown,
   Building2,
   Folder,
-  Circle,
   Loader2
 } from 'lucide-react';
 
@@ -198,71 +198,68 @@ export function OrgUnitSelectionModal({
     });
   };
 
-  const renderOrgUnitNode = (node: OrgUnitNode, depth: number = 0) => {
+  const renderOrgUnitNode = (node: OrgUnitNode, depth: number = 0): React.ReactNode => {
     const hasChildren = node.children && node.children.length > 0;
     const isLeaf = !hasChildren && !node.hasLoadedChildren;
-    const indentStyle = { marginLeft: `${depth * 24}px` };
+    const checkboxId = `ou-${node.id}`;
 
     return (
-      <div key={node.id} className="org-unit-node">
-        <div 
-          className={`flex items-center py-2 px-3 rounded-md transition-colors ${
-            node.isSelected 
-                              ? 'bg-brand-green/10 border border-brand-green/20' 
-              : 'hover:bg-gray-50 border border-transparent'
-          }`}
-          style={indentStyle}
+      <li key={node.id} role="treeitem" aria-expanded={isLeaf ? undefined : !!node.isExpanded} aria-selected={!!node.isSelected}>
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-lg border py-1.5 pr-3 transition-colors',
+            node.isSelected ? 'border-primary-border bg-primary-soft' : 'border-transparent hover:bg-surface-muted/60'
+          )}
+          // Dynamic: indentation follows the tree depth.
+          style={{ paddingLeft: `${8 + depth * 22}px` }}
         >
-          {/* Expand/Collapse button */}
-          {!isLeaf && (
+          {isLeaf ? (
+            <span className="w-7 shrink-0" />
+          ) : (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 toggleOrgUnitExpansion(node.id);
               }}
-              className="p-1 hover:bg-gray-100 rounded mr-2 transition-colors"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               disabled={node.isLoading}
+              aria-label={node.isExpanded ? `Collapse ${node.displayName}` : `Expand ${node.displayName}`}
             >
               {node.isLoading ? (
-                <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : node.isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-gray-600" />
+                <ChevronDown className="h-4 w-4" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-gray-600" />
+                <ChevronRight className="h-4 w-4" />
               )}
             </button>
           )}
-          {isLeaf && <div className="w-8" />}
-          
-          {/* Checkbox */}
+
           <Checkbox
+            id={checkboxId}
             checked={node.isSelected || false}
             onCheckedChange={() => toggleOrgUnitSelection(node.id)}
-            className="h-4 w-4 mr-3"
           />
-          
-          {/* Icon */}
-          {isLeaf ? (
-                            <Building2 className="h-4 w-4 text-brand-green mr-3" />
-          ) : (
-            <Folder className="h-4 w-4 text-gray-500 mr-3" />
-          )}
-          
-          {/* Name */}
-          <span className={`text-sm flex-1 font-medium ${
-                            node.isSelected ? 'text-brand-green' : 'text-gray-800'
-          }`}>
-            {node.displayName}
-          </span>
+
+          <label htmlFor={checkboxId} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+            {isLeaf ? (
+              <Building2 className="h-4 w-4 shrink-0 text-tint-teal" aria-hidden="true" />
+            ) : (
+              <Folder className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            )}
+            <span className={cn('truncate text-sm', node.isSelected ? 'font-semibold text-primary' : 'text-foreground')}>
+              {node.displayName}
+            </span>
+          </label>
         </div>
-        
-        {/* Children */}
+
         {hasChildren && node.isExpanded && (
-          <div className="children-container mt-1">
+          <ul role="group" className="mt-0.5 space-y-0.5">
             {node.children!.map(child => renderOrgUnitNode(child, depth + 1))}
-          </div>
+          </ul>
         )}
-      </div>
+      </li>
     );
   };
 
@@ -307,79 +304,84 @@ export function OrgUnitSelectionModal({
     });
   };
 
+  const selectedNames = getSelectedOrgUnitNames();
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-gray-800">Organisation unit</DialogTitle>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-hidden flex flex-col space-y-4">
-          {/* Org Unit Tree */}
-          <div className="flex-1 border border-gray-200 rounded-md p-3 overflow-y-auto min-h-0 bg-white">
-            {orgUnitTree.length > 0 ? (
-              <div className="space-y-1">
-                {orgUnitTree.map(node => renderOrgUnitNode(node))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <Building2 className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                <p>No organization units available</p>
-              </div>
-            )}
-          </div>
-
-          {/* Selected Units Display */}
-          {selectedUnits.length > 0 && (
-            <div className="flex-shrink-0 border-t pt-4">
-              <h3 className="font-medium mb-3 text-gray-800 flex items-center">
-                <Building2 className="h-4 w-4 mr-2 text-brand-green" />
-                Selected Units ({selectedUnits.length})
-              </h3>
-              <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 bg-gray-50 rounded-md">
-                {getSelectedOrgUnitNames().map((name, index) => (
-                  <Badge 
-                    key={selectedUnits[index]} 
-                    variant="secondary" 
-                    className="bg-brand-green/20 text-brand-green border border-brand-green/30 hover:bg-brand-green/30 transition-colors"
-                  >
-                    <span className="font-medium">{name}</span>
-                    <button
-                      onClick={() => toggleOrgUnitSelection(selectedUnits[index])}
-                      className="ml-2 hover:text-brand-green font-bold text-lg leading-none"
-                    >
-                      ×
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
+    <FormDialog
+      open={isOpen}
+      onOpenChange={(open) => !open && onClose()}
+      title="Choose facilities"
+      description="Expand a region or district to find facilities. Tick every unit you want in this assessment."
+      size="xl"
+      fill
+      footerStart={
+        <span>
+          <span className="font-clinical font-medium text-foreground">{selectedUnits.length}</span> chosen
+        </span>
+      }
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleUpdate}>Use these facilities</Button>
+        </>
+      }
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card p-2">
+          {orgUnitTree.length > 0 ? (
+            <ul role="tree" aria-label="Organisation units" aria-multiselectable="true" className="space-y-0.5">
+              {orgUnitTree.map(node => renderOrgUnitNode(node))}
+            </ul>
+          ) : (
+            <EmptyState
+              illustration="empty-list"
+              title="No facilities available"
+              description="Your DHIMS2 account doesn't have any organisation units assigned. Ask your DHIMS2 administrator to give you access."
+            />
           )}
         </div>
 
-        {/* Action Buttons - Fixed at bottom */}
-        <div className="flex-shrink-0 flex justify-end space-x-2 pt-4 border-t bg-gray-50 px-4 py-3 -mx-6 -mb-6 sticky bottom-0">
-          <Button 
-            variant="outline" 
-            onClick={onClose} 
-            className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-          >
-            Hide
-          </Button>
-          <Button 
-            onClick={handleUpdate}
-            className="text-white hover:opacity-90" 
-            style={{ backgroundColor: 'var(--brand-navy)' }}
-          >
-            Update
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        {selectedUnits.length > 0 && (
+          <div className="shrink-0 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Chosen</h3>
+              <Button variant="link" size="xs" className="h-auto px-0" onClick={() => {
+                setOrgUnitTree(prev => clearTreeSelection(prev));
+                setSelectedUnits([]);
+              }}>
+                Clear all
+              </Button>
+            </div>
+            <ul className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+              {selectedNames.map((name, index) => (
+                <li key={selectedUnits[index]}>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-primary-border bg-primary-soft py-0.5 pr-1 pl-2.5 text-xs font-medium text-primary">
+                    {name}
+                    <button
+                      type="button"
+                      onClick={() => toggleOrgUnitSelection(selectedUnits[index])}
+                      className="rounded-full p-0.5 transition-colors hover:bg-primary/10"
+                      aria-label={`Remove ${name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </FormDialog>
   );
-} 
+}
+
+function clearTreeSelection(nodes: OrgUnitNode[]): OrgUnitNode[] {
+  return nodes.map(node => ({
+    ...node,
+    isSelected: false,
+    children: node.children ? clearTreeSelection(node.children) : node.children,
+  }));
+}

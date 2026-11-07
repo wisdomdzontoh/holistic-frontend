@@ -1,23 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import Image from 'next/image';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { InlineNotice } from '@/components/common/inline-notice';
 import { useAuth } from '@/lib/auth-context';
 
 const loginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
-  password: z.string().min(1, 'Password is required'),
+  username: z.string().min(1, 'Enter your DHIMS2 username'),
+  password: z.string().min(1, 'Enter your password'),
   instanceUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
 
@@ -25,8 +25,15 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const { login, isAuthenticated, loading: sessionLoading } = useAuth();
   const router = useRouter();
+
+  // Already signed in (e.g. returning with a live session) — go straight in.
+  useEffect(() => {
+    if (!sessionLoading && isAuthenticated) router.replace('/dashboard');
+  }, [isAuthenticated, sessionLoading, router]);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -39,147 +46,155 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
-    
+    setServerError(null);
+
     try {
       // Only pass instanceUrl if it's not empty
       const instanceUrl = data.instanceUrl?.trim() || undefined;
       const result = await login(data.username, data.password, instanceUrl);
-      
+
       if (result.success) {
-        toast.success('Login successful!', {
-          description: result.message,
-        });
-        router.push('/dashboard'); // Redirect to dashboard after successful login
+        toast.success('Signed in', { description: result.message });
+        router.push('/dashboard');
       } else {
-        toast.error('Login failed', {
-          description: result.message,
-        });
+        setServerError(result.message || "That username and password didn't work. Check them and try again.");
       }
-    } catch (error) {
-      toast.error('Login failed', {
-        description: 'An unexpected error occurred. Please try again.',
-      });
+    } catch {
+      setServerError("We couldn't reach DHIMS2. Check your internet connection and try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-brand-navy to-brand-navy-dark">
-      {/* Header bar */}
-      <header className="flex items-center justify-between gap-4 flex-wrap px-6 py-8 md:px-12">
-        <div className="flex items-center gap-4">
-          <div className="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden ring-1 ring-white/20">
-            <Image
-              src="/images/coat-of-arms.png"
-              alt="Ghana Coat of Arms"
-              width={56}
-              height={56}
-              className="object-contain"
-              priority
-            />
-          </div>
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-white" style={{ fontFamily: 'var(--font-display)' }}>
-              Holistic Assessment
-            </h1>
-            <p className="text-sm text-white/70">Health Facility Assessment Tool</p>
+    <main className="grid min-h-screen lg:grid-cols-2">
+      {/* Brand side — plain dotted canvas */}
+      <section className="login-hero hidden min-h-screen flex-col items-center justify-center p-12 lg:flex">
+        <div className="w-full max-w-md space-y-6 text-center">
+          <Image
+            src="/images/coat-of-arms.png"
+            alt="Ghana coat of arms"
+            width={120}
+            height={120}
+            className="mx-auto h-28 w-28 object-contain"
+            priority
+          />
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Holistic Assessment</h1>
+            <p className="text-base text-muted-foreground">
+              Score health facility performance against national targets, using data straight from DHIMS2.
+            </p>
           </div>
         </div>
+      </section>
 
-        <div className="hidden sm:flex items-center justify-center w-14 h-14 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm">
-          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-      </header>
+      {/* Sign-in side */}
+      <section className="flex min-h-screen flex-col bg-card">
+        <div className="flex flex-1 items-center justify-center p-6 lg:p-10">
+          <div className="w-full max-w-[440px] space-y-6">
+            {/* Compact brand for small screens */}
+            <div className="flex items-center gap-3 lg:hidden">
+              <Image src="/images/coat-of-arms.png" alt="" width={44} height={44} className="h-11 w-11 object-contain" priority />
+              <div>
+                <p className="text-lg font-bold text-foreground">Holistic Assessment</p>
+                <p className="text-sm text-muted-foreground">Health facility assessment tool</p>
+              </div>
+            </div>
 
-      {/* Centered login card */}
-      <main className="flex-1 flex items-center justify-center px-4 pb-12">
-        <div className="w-full max-w-md">
-          <div className="rounded-xl bg-white shadow-2xl p-8">
-            <h3 className="text-xl font-semibold text-ink mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-              Log in
-            </h3>
-            <p className="text-sm text-ink-muted mb-6">Sign in with your DHIMS2 credentials to continue</p>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-ink">Username</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="text"
-                          placeholder="Enter your DHIMS2 username"
-                          disabled={isLoading}
-                          autoFocus
-                          className="h-11 bg-brand-navy/[0.04] border-transparent focus-visible:bg-white focus-visible:border-brand-teal focus-visible:ring-brand-teal/30"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <div className="login-card rounded-xl border border-border bg-card p-6">
+              <h2 className="mb-1 text-xl font-semibold">Sign in</h2>
+              <p className="mb-5 text-sm text-muted-foreground">Use your DHIMS2 username and password.</p>
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-ink">Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} method="post" className="space-y-4" noValidate>
+                  {serverError && <InlineNotice tone="error">{serverError}</InlineNotice>}
+
+                  <FormField
+                    control={form.control}
+                    name="username"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Username</FormLabel>
+                        <FormControl>
                           <Input
                             {...field}
-                            type="password"
-                            placeholder="Enter your DHIMS2 password"
+                            type="text"
+                            autoComplete="username"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            placeholder="e.g. kmensah"
                             disabled={isLoading}
-                            className="h-11 bg-brand-navy/[0.04] border-transparent pr-10 focus-visible:bg-white focus-visible:border-brand-teal focus-visible:ring-brand-teal/30"
+                            autoFocus
+                            className="h-10"
                           />
-                          <button
-                            type="button"
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-ink-muted"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <Button
-                  type="submit"
-                  className="w-full h-11 text-white font-medium bg-brand-navy hover:bg-brand-navy-dark"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Signing in...' : 'Log in'}
-                </Button>
-              </form>
-            </Form>
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Input
+                              {...field}
+                              type={showPassword ? 'text' : 'password'}
+                              autoComplete="current-password"
+                              disabled={isLoading}
+                              className="h-10 pr-10"
+                            />
+                            <button
+                              type="button"
+                              className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
+                              onClick={() => setShowPassword((v) => !v)}
+                              aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="animate-spin" aria-hidden="true" />
+                        Signing in…
+                      </>
+                    ) : (
+                      'Sign in'
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            </div>
           </div>
         </div>
-      </main>
 
-      {/* Footer bar */}
-      <footer className="flex items-center justify-between gap-x-4 gap-y-2 flex-wrap px-6 py-4 md:px-12 border-t border-white/10">
-        <span className="text-xs text-white/70">
-          <a href="https://wisdomdzontoh.vercel.app/" target="_blank" rel="noopener noreferrer" className="hover:text-white underline underline-offset-2">
-            Designed by Wisdom Dzontoh
-          </a>
-          <span className="mx-2 text-white/30">|</span>
-          Copyright ©2025 Holistic Assessment Tool
-        </span>
-        <span className="text-xs text-white/70">Terms of Service and Privacy Policy</span>
-      </footer>
-    </div>
+        <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-6 py-4 text-xs text-muted-foreground">
+          <span>
+            ©{new Date().getFullYear()} Holistic Assessment Tool ·{' '}
+            <a
+              href="https://wisdomdzontoh.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              Designed by Wisdom Dzontoh
+            </a>
+          </span>
+          <span>Terms of Service and Privacy Policy</span>
+        </footer>
+      </section>
+    </main>
   );
 }

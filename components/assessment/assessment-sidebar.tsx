@@ -1,27 +1,35 @@
 'use client';
 
 import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Target, 
-  Building2, 
-  Calendar, 
-  Settings,
-  Play,
-  Save,
-  Download,
-  Printer,
-  FileText,
+import {
+  Building2,
+  Calendar,
   ChevronRight,
-  ChevronDown,
-  Loader2,
   FileDown,
+  FolderOpen,
   Layers,
-  ListChecks
+  ListChecks,
+  Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Play,
+  Printer,
+  Save,
+  type LucideIcon,
 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { InlineNotice } from '@/components/common/inline-notice';
+import { cn } from '@/lib/utils';
+
+type SourceFilter = 'all' | 'dhis2' | 'manual';
+
+const SOURCE_OPTIONS: Array<{ value: SourceFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'dhis2', label: 'DHIMS2' },
+  { value: 'manual', label: 'By hand' },
+];
 
 interface AssessmentSidebarProps {
   sidebarExpanded: boolean;
@@ -34,8 +42,8 @@ interface AssessmentSidebarProps {
   isDataLoaded: boolean;
   isExporting: boolean;
   exportProgress: string;
-  indicatorSourceFilter: 'all' | 'dhis2' | 'manual';
-  onIndicatorSourceFilterChange: (filter: 'all' | 'dhis2' | 'manual') => void;
+  indicatorSourceFilter: SourceFilter;
+  onIndicatorSourceFilterChange: (filter: SourceFilter) => void;
   onOrgUnitModalOpen: () => void;
   onPeriodModalOpen: () => void;
   onSaveModalOpen: () => void;
@@ -50,12 +58,12 @@ interface AssessmentSidebarProps {
   getPeriodDisplayNames: () => string[];
 }
 
+/** The assessment set-up panel: what to assess, the one primary "Generate report" action, then save/export. */
 export default function AssessmentSidebar({
   sidebarExpanded,
   onToggleSidebar,
   selectedOrgUnits,
   selectedPeriods,
-  dhis2OrgUnitsFlat,
   isLoadingOrgUnits,
   isGenerating,
   isDataLoaded,
@@ -74,352 +82,248 @@ export default function AssessmentSidebar({
   onReopenBulkProgress,
   onGenerateReport,
   getOrgUnitDisplayNames,
-  getPeriodDisplayNames
+  getPeriodDisplayNames,
 }: AssessmentSidebarProps) {
+  const canGenerate = !isGenerating && selectedPeriods.length > 0 && selectedOrgUnits.length > 0;
+  const canUseResult = isDataLoaded && !isGenerating;
+
+  if (!sidebarExpanded) {
+    return (
+      <aside
+        className="no-print flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border bg-card py-3"
+        aria-label="Assessment set-up"
+      >
+        <RailButton icon={PanelLeftOpen} label="Show set-up panel" onClick={onToggleSidebar} />
+        <div className="my-1 h-px w-8 bg-border" />
+        <RailButton icon={Building2} label="Choose facilities" onClick={onOrgUnitModalOpen} disabled={isLoadingOrgUnits} />
+        <RailButton icon={Calendar} label="Choose periods" onClick={onPeriodModalOpen} />
+        <RailButton
+          icon={isGenerating ? Loader2 : Play}
+          label="Generate report"
+          onClick={onGenerateReport}
+          disabled={!canGenerate}
+          primary
+          spin={isGenerating}
+        />
+        <div className="my-1 h-px w-8 bg-border" />
+        <RailButton icon={Save} label="Save assessment" onClick={onSaveModalOpen} disabled={!canUseResult} />
+        <RailButton icon={FileDown} label="Download Excel" onClick={onExportExcel} disabled={!canUseResult || isExporting} />
+        <RailButton icon={Printer} label="Print or save as PDF" onClick={onExportPDF} disabled={!canUseResult} />
+        <RailButton icon={FolderOpen} label="Open a saved assessment" onClick={onOpenAssessmentModal} />
+        <RailButton icon={Layers} label="Generate for a whole group" onClick={onBulkGenerateModalOpen} />
+        {activeBulkJobId != null && <RailButton icon={ListChecks} label="See group progress" onClick={onReopenBulkProgress} />}
+      </aside>
+    );
+  }
+
+  const orgUnitNames = selectedOrgUnits.length > 0 ? getOrgUnitDisplayNames() : [];
+  const periodNames = selectedPeriods.length > 0 ? getPeriodDisplayNames() : [];
+
   return (
-    <div className={`no-print bg-gradient-to-b from-white to-surface-muted border-r border-gray-200 flex flex-col transition-all duration-300 shadow-sm ${
-      sidebarExpanded ? 'w-80' : 'w-16'
-    }`}>
-      {/* Sidebar Header */}
-      <div className="p-5 border-b border-brand-navy-dark bg-brand-navy text-white">
-        <div className="flex items-center justify-between">
-          {sidebarExpanded && (
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/10 rounded-lg">
-                <Target className="h-5 w-5 text-white" />
-              </div>
-              <span className="font-semibold text-white text-lg" style={{ fontFamily: 'var(--font-display)' }}>Assessment</span>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleSidebar}
-            className="h-9 w-9 p-0 text-white hover:bg-white/10 rounded-lg transition-all duration-200"
-          >
-            {sidebarExpanded ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </div>
+    <aside
+      className="no-print flex w-80 shrink-0 flex-col border-r border-border bg-card"
+      aria-label="Assessment set-up"
+    >
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+        <h2 className="text-sm font-semibold text-foreground">Set up assessment</h2>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" onClick={onToggleSidebar} aria-label="Hide set-up panel">
+              <PanelLeftClose />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Hide set-up panel</TooltipContent>
+        </Tooltip>
       </div>
 
-      {/* Sidebar Content */}
-      <ScrollArea className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-8 pb-8">
-          {/* Configuration Section */}
-          {sidebarExpanded && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-brand-navy rounded-lg">
-                  <Settings className="h-4 w-4 text-white" />
-                </div>
-                <span className="text-lg font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Configuration</span>
-              </div>
+      <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
+        {/* What to assess */}
+        <section className="space-y-3">
+          <SectionLabel>What to assess</SectionLabel>
+          <PickerField
+            icon={Building2}
+            label="Facilities"
+            placeholder={isLoadingOrgUnits ? 'Loading facilities…' : 'Choose facilities'}
+            values={orgUnitNames}
+            loading={isLoadingOrgUnits}
+            onClick={onOrgUnitModalOpen}
+          />
+          <PickerField
+            icon={Calendar}
+            label="Periods"
+            placeholder="Choose periods"
+            values={periodNames}
+            onClick={onPeriodModalOpen}
+          />
+        </section>
 
-              {/* Organization Units */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Organization Units</span>
-                  <Badge variant="secondary" className="text-xs bg-brand-navy/10 text-brand-navy border-brand-navy/20 font-medium px-2 py-0.5">
-                    {selectedOrgUnits.length} selected
-                  </Badge>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onOrgUnitModalOpen}
-                  disabled={isLoadingOrgUnits}
-                  className="w-full justify-start text-left h-auto p-4 border border-gray-200 hover:border-brand-navy/40 hover:bg-brand-navy/5 transition-colors duration-200 rounded-xl group"
-                >
-                  {isLoadingOrgUnits ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-3 animate-spin text-brand-navy" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-ink">Loading...</div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="p-2 bg-brand-navy rounded-lg mr-3">
-                        <Building2 className="h-4 w-4 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-ink">
-                          {selectedOrgUnits.length > 0 ? 'Selected Units' : 'Select Organization Units'}
-                        </div>
-                        {selectedOrgUnits.length > 0 && (
-                          <div className="text-xs text-ink-muted truncate mt-1">
-                            {getOrgUnitDisplayNames().slice(0, 2).join(', ')}
-                            {selectedOrgUnits.length > 2 && ` +${selectedOrgUnits.length - 2} more`}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* Assessment Periods */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Assessment Periods</span>
-                  <Badge variant="secondary" className="text-xs bg-brand-teal/10 text-brand-teal border-brand-teal/20 font-medium px-2 py-0.5">
-                    {selectedPeriods.length} selected
-                  </Badge>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onPeriodModalOpen}
-                  className="w-full justify-start text-left h-auto p-4 border border-gray-200 hover:border-brand-teal/40 hover:bg-brand-teal/5 transition-colors duration-200 rounded-xl group"
-                >
-                  <div className="p-2 bg-brand-teal rounded-lg mr-3">
-                    <Calendar className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-ink">
-                      {selectedPeriods.length > 0 ? 'Selected Periods' : 'Select Periods'}
-                    </div>
-                    {selectedPeriods.length > 0 && (
-                      <div className="text-xs text-ink-muted truncate mt-1">
-                        {getPeriodDisplayNames().slice(0, 2).join(', ')}
-                        {selectedPeriods.length > 2 && ` +${selectedPeriods.length - 2} more`}
-                      </div>
-                    )}
-                  </div>
-                </Button>
-              </div>
-
-              {/* Data Source Filter */}
-              <div className="space-y-3">
-                <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Data Source</span>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    size="sm"
-                    variant={indicatorSourceFilter==='all'?'default':'outline'}
-                    className={indicatorSourceFilter==='all'? 'bg-brand-navy text-white hover:bg-brand-navy-dark text-xs font-medium':'border-gray-200 text-ink-muted hover:bg-gray-50 hover:border-gray-300 text-xs font-medium'}
-                    onClick={()=>onIndicatorSourceFilterChange('all')}
-                  >
-                    All
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={indicatorSourceFilter==='dhis2'?'default':'outline'}
-                    className={indicatorSourceFilter==='dhis2'? 'bg-brand-green text-white hover:bg-brand-green-dark text-xs font-medium':'border-gray-200 text-ink-muted hover:bg-gray-50 hover:border-gray-300 text-xs font-medium'}
-                    onClick={()=>onIndicatorSourceFilterChange('dhis2')}
-                  >
-                    DHIS2
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={indicatorSourceFilter==='manual'?'default':'outline'}
-                    className={indicatorSourceFilter==='manual'? 'bg-accent-gold text-white hover:bg-accent-gold/90 text-xs font-medium':'border-gray-200 text-ink-muted hover:bg-gray-50 hover:border-gray-300 text-xs font-medium'}
-                    onClick={()=>onIndicatorSourceFilterChange('manual')}
-                  >
-                    Manual
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <Separator className="bg-gray-200" />
-
-          {/* Action Buttons */}
-          <div className="space-y-6">
-            {sidebarExpanded && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-brand-green rounded-lg">
-                    <Play className="h-4 w-4 text-white" />
-                  </div>
-                  <span className="text-lg font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Actions</span>
-                </div>
-
-                {/* Generate Report Button */}
-                <Button
-                  onClick={onGenerateReport}
-                  disabled={isGenerating || selectedPeriods.length === 0 || selectedOrgUnits.length === 0}
-                  size="sm"
-                  className="w-full bg-brand-green text-white hover:bg-brand-green-dark disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200 h-14 text-sm font-semibold rounded-xl"
-                  title="Fetch DHIS2 data and calculate scores for selected periods and org units"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-3 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-5 w-5 mr-3" />
-                      Generate Report
-                    </>
-                  )}
-                </Button>
-
-                {/* Save Assessment Button */}
-                <Button
-                  onClick={onSaveModalOpen}
-                  disabled={!isDataLoaded || isGenerating}
-                  variant="outline"
-                  size="sm"
-                  className="w-full bg-brand-teal/5 border-brand-teal/30 text-brand-teal hover:bg-brand-teal/10 hover:border-brand-teal/40 transition-colors duration-200 h-12 rounded-xl font-medium"
-                >
-                  <Save className="h-4 w-4 mr-3" />
-                  Save Assessment
-                </Button>
-
-                {/* Export Buttons */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-brand-navy rounded-lg">
-                      <Download className="h-4 w-4 text-white" />
-                    </div>
-                    <span className="text-base font-semibold text-ink" style={{ fontFamily: 'var(--font-display)' }}>Export</span>
-                  </div>
-                  <Button
-                    onClick={onExportExcel}
-                    disabled={!isDataLoaded || isGenerating}
-                    variant="outline"
-                    size="sm"
-                    className="w-full border-brand-navy/25 text-brand-navy hover:bg-brand-navy/5 hover:border-brand-navy/40 transition-colors duration-200 h-12 rounded-xl font-medium"
-                  >
-                    <FileDown className="h-4 w-4 mr-3" />
-                    Export Excel
-                  </Button>
-                  {isExporting && exportProgress && (
-                    <div className="text-xs text-brand-navy text-center bg-brand-navy/5 p-3 rounded-lg border border-brand-navy/15">
-                      {exportProgress}
-                    </div>
-                  )}
-                  <Button
-                    onClick={onExportPDF}
-                    disabled={!isDataLoaded || isGenerating}
-                    variant="outline"
-                    size="sm"
-                    className="w-full border-gray-200 text-ink-muted hover:bg-gray-50 hover:border-gray-300 transition-colors duration-200 h-12 rounded-xl font-medium"
-                  >
-                    <Printer className="h-4 w-4 mr-3" />
-                    Export PDF
-                  </Button>
-                </div>
-
-                {/* Open Saved Assessment Button */}
-                <Button
-                  onClick={onOpenAssessmentModal}
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-brand-green/25 text-brand-green hover:bg-brand-green/5 hover:border-brand-green/40 transition-colors duration-200 h-12 rounded-xl font-medium"
-                >
-                  <FileText className="h-4 w-4 mr-3" />
-                  Open Saved
-                </Button>
-
-                {/* Bulk Generate Button */}
-                <Button
-                  onClick={onBulkGenerateModalOpen}
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-brand-navy/25 text-brand-navy hover:bg-brand-navy/5 hover:border-brand-navy/40 transition-colors duration-200 h-12 rounded-xl font-medium"
-                >
-                  <Layers className="h-4 w-4 mr-3" />
-                  Bulk Generate
-                </Button>
-
-                {/* Reopen bulk progress - only visible once a bulk job has been started */}
-                {activeBulkJobId != null && (
-                  <Button
-                    onClick={onReopenBulkProgress}
-                    variant="outline"
-                    size="sm"
-                    className="w-full border-brand-teal/25 text-brand-teal hover:bg-brand-teal/5 hover:border-brand-teal/40 transition-colors duration-200 h-12 rounded-xl font-medium"
-                  >
-                    <ListChecks className="h-4 w-4 mr-3" />
-                    View Bulk Progress
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {/* Collapsed Sidebar Icons */}
-            {!sidebarExpanded && (
-              <div className="space-y-3">
-                <Button
-                  onClick={onGenerateReport}
-                  disabled={isGenerating || selectedPeriods.length === 0 || selectedOrgUnits.length === 0}
-                  size="sm"
-                  className="w-10 h-10 p-0 bg-brand-green text-white hover:bg-brand-green-dark shadow-sm rounded-xl transition-colors duration-200"
-                  title="Generate Report"
-                >
-                  {isGenerating ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Play className="h-5 w-5" />
-                  )}
-                </Button>
-                <Button
-                  onClick={onSaveModalOpen}
-                  disabled={!isDataLoaded || isGenerating}
-                  variant="outline"
-                  size="sm"
-                  className="w-10 h-10 p-0 bg-brand-teal/5 border-brand-teal/30 text-brand-teal hover:bg-brand-teal/10 rounded-xl shadow-sm"
-                  title="Save Assessment"
-                >
-                  <Save className="h-5 w-5" />
-                </Button>
-                <Button
-                  onClick={onExportExcel}
-                  disabled={!isDataLoaded || isGenerating}
-                  variant="outline"
-                  size="sm"
-                  className="w-10 h-10 p-0 border-brand-navy/25 text-brand-navy hover:bg-brand-navy/5 rounded-xl shadow-sm"
-                  title="Export Excel"
-                >
-                  <Download className="h-5 w-5" />
-                </Button>
-                <Button
-                  onClick={onExportPDF}
-                  disabled={!isDataLoaded || isGenerating}
-                  variant="outline"
-                  size="sm"
-                  className="w-10 h-10 p-0 border-gray-200 text-ink-muted hover:bg-gray-50 rounded-xl shadow-sm"
-                  title="Export PDF"
-                >
-                  <Printer className="h-5 w-5" />
-                </Button>
-                <Button
-                  onClick={onOpenAssessmentModal}
-                  variant="outline"
-                  size="sm"
-                  className="w-10 h-10 p-0 border-brand-green/25 text-brand-green hover:bg-brand-green/5 rounded-xl shadow-sm"
-                  title="Open Saved"
-                >
-                  <FileText className="h-5 w-5" />
-                </Button>
-                <Button
-                  onClick={onBulkGenerateModalOpen}
-                  variant="outline"
-                  size="sm"
-                  className="w-10 h-10 p-0 border-brand-navy/25 text-brand-navy hover:bg-brand-navy/5 rounded-xl shadow-sm"
-                  title="Bulk Generate"
-                >
-                  <Layers className="h-5 w-5" />
-                </Button>
-                {activeBulkJobId != null && (
-                  <Button
-                    onClick={onReopenBulkProgress}
-                    variant="outline"
-                    size="sm"
-                    className="w-10 h-10 p-0 border-brand-teal/25 text-brand-teal hover:bg-brand-teal/5 rounded-xl shadow-sm"
-                    title="View Bulk Progress"
-                  >
-                    <ListChecks className="h-5 w-5" />
-                  </Button>
-                )}
-              </div>
-            )}
+        {/* Indicator source filter */}
+        <section className="space-y-2">
+          <SectionLabel>Show indicators</SectionLabel>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Show indicators from">
+            {SOURCE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={indicatorSourceFilter === opt.value}
+                onClick={() => onIndicatorSourceFilterChange(opt.value)}
+                className="choice-option min-h-9 justify-center px-2 py-1.5 text-xs"
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-        </div>
-      </ScrollArea>
+        </section>
+
+        <Button size="lg" className="w-full" onClick={onGenerateReport} disabled={!canGenerate}>
+          {isGenerating ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden="true" />
+              Generating…
+            </>
+          ) : (
+            <>
+              <Play aria-hidden="true" />
+              Generate report
+            </>
+          )}
+        </Button>
+        {!canGenerate && !isGenerating && (
+          <p className="-mt-4 text-xs text-muted-foreground">Choose at least one facility and one period first.</p>
+        )}
+
+        {/* Save and export */}
+        <section className="space-y-2 border-t border-dashed border-border pt-5">
+          <SectionLabel>Save and share</SectionLabel>
+          <Button variant="outline" className="w-full justify-start" onClick={onSaveModalOpen} disabled={!canUseResult}>
+            <Save aria-hidden="true" />
+            Save assessment
+          </Button>
+          <Button variant="secondary" className="w-full justify-start" onClick={onExportExcel} disabled={!canUseResult || isExporting}>
+            {isExporting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <FileDown aria-hidden="true" />}
+            {isExporting ? 'Preparing Excel…' : 'Download Excel'}
+          </Button>
+          {isExporting && exportProgress && <InlineNotice tone="info">{exportProgress}</InlineNotice>}
+          <Button variant="secondary" className="w-full justify-start" onClick={onExportPDF} disabled={!canUseResult}>
+            <Printer aria-hidden="true" />
+            Print or save as PDF
+          </Button>
+        </section>
+
+        {/* Saved work */}
+        <section className="space-y-2 border-t border-dashed border-border pt-5">
+          <SectionLabel>Saved work</SectionLabel>
+          <Button variant="secondary" className="w-full justify-start" onClick={onOpenAssessmentModal}>
+            <FolderOpen aria-hidden="true" />
+            Open a saved assessment
+          </Button>
+          <Button variant="secondary" className="w-full justify-start" onClick={onBulkGenerateModalOpen}>
+            <Layers aria-hidden="true" />
+            Generate for a whole group
+          </Button>
+          {activeBulkJobId != null && (
+            <Button variant="secondary" className="w-full justify-start" onClick={onReopenBulkProgress}>
+              <ListChecks aria-hidden="true" />
+              See group progress
+            </Button>
+          )}
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{children}</h3>;
+}
+
+function PickerField({
+  icon: Icon,
+  label,
+  placeholder,
+  values,
+  loading,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  placeholder: string;
+  values: string[];
+  loading?: boolean;
+  onClick: () => void;
+}) {
+  const hasValues = values.length > 0;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-foreground">{label}</span>
+        {hasValues && <span className="font-clinical text-xs text-muted-foreground">{values.length} chosen</span>}
+      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={loading}
+        className={cn(
+          'group flex w-full items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/45 hover:bg-primary/5 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-60',
+          hasValues ? 'border-primary-border' : 'border-input'
+        )}
+      >
+        <span
+          className={cn(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+            hasValues ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+          )}
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Icon className="h-4 w-4" aria-hidden="true" />}
+        </span>
+        <span className="min-w-0 flex-1">
+          {hasValues ? (
+            <>
+              <span className="block truncate text-sm font-medium text-foreground">{values.slice(0, 2).join(', ')}</span>
+              {values.length > 2 && <span className="block text-xs text-muted-foreground">and {values.length - 2} more</span>}
+            </>
+          ) : (
+            <span className="block text-sm text-muted-foreground">{placeholder}</span>
+          )}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+      </button>
     </div>
+  );
+}
+
+function RailButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+  primary,
+  spin,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  primary?: boolean;
+  spin?: boolean;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* span keeps the tooltip working when the button is disabled */}
+        <span>
+          <Button
+            variant={primary ? 'default' : 'ghost'}
+            size="icon"
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label}
+          >
+            <Icon className={cn(spin && 'animate-spin')} />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   );
 }
