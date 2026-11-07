@@ -16,6 +16,7 @@ import AssessmentSidebar from '@/components/assessment/assessment-sidebar';
 import AssessmentHeader from '@/components/assessment/assessment-header';
 import AssessmentMainContent from '@/components/assessment/assessment-main-content';
 import { toast } from 'sonner';
+import { assessmentExportFilename } from '@/lib/download-filename';
 
 interface State {
   selectedOrgUnits: string[];
@@ -110,12 +111,12 @@ export default function AssessmentPage() {
       return;
     }
 
-      setState(prev => ({ 
-        ...prev, 
-        isGenerating: true, 
+      setState(prev => ({
+        ...prev,
+        isGenerating: true,
       loadingProgress: 0,
       loadingMessage: 'Getting ready…',
-      error: null 
+      error: null
         }));
 
         try {
@@ -128,7 +129,7 @@ export default function AssessmentPage() {
       setState(prev => ({
         ...prev,
         loadingProgress: 20,
-        loadingMessage: 'Fetching data from DHIMS2 and scoring it…' 
+        loadingMessage: 'Fetching data from DHIMS2 and scoring it…'
       }));
 
       const data = await assessmentService.getMultiPeriodAssessmentData({
@@ -138,17 +139,17 @@ export default function AssessmentPage() {
         include_scores: true,
       });
 
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         loadingProgress: 100,
-        loadingMessage: 'Done — opening the report…' 
+        loadingMessage: 'Done — opening the report…'
       }));
 
       setTimeout(() => {
-      setState(prev => ({ 
-        ...prev, 
-          assessmentData: data, 
-          isDataLoaded: true, 
+      setState(prev => ({
+        ...prev,
+          assessmentData: data,
+          isDataLoaded: true,
         isGenerating: false,
           loadingProgress: 0,
           loadingMessage: ''
@@ -158,8 +159,8 @@ export default function AssessmentPage() {
 
     } catch (error) {
       console.error('Error generating report:', error);
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         isGenerating: false,
         error: "We couldn't generate the report. Check your connection and try again.",
         loadingProgress: 0,
@@ -216,13 +217,13 @@ export default function AssessmentPage() {
       const url = window.URL.createObjectURL(exportResult.blob);
       const a = document.createElement('a');
       a.href = url;
-      a.setAttribute('download', exportResult.filename || `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      a.setAttribute('download', exportResult.filename || assessmentExportFilename(orgUnitNames[0]));
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
+
       toast.success('Excel file downloaded.');
 
       } catch (error: any) {
@@ -264,13 +265,13 @@ export default function AssessmentPage() {
       });
 
       // Update the assessment data with new scores
-          setState(prev => ({ 
-            ...prev, 
-        assessmentData: updatedData 
+          setState(prev => ({
+            ...prev,
+        assessmentData: updatedData
       }));
-      
+
       toast.success('Scores updated with the values you entered.');
-      
+
     } catch (error) {
       console.error('Error calculating scores:', error);
       setState(prev => ({ ...prev, error: 'Failed to calculate scores for manual entries' }));
@@ -293,7 +294,7 @@ export default function AssessmentPage() {
 
       // Convert assessment data from list to dictionary format expected by backend
       let indicatorDataDict: Record<string, any> = {};
-      
+
       if (Array.isArray(state.assessmentData)) {
         // If it's a list, convert to dictionary
         state.assessmentData.forEach((periodData, index) => {
@@ -404,9 +405,9 @@ export default function AssessmentPage() {
 
       // Try different possible property names for the display name
       return orgUnit ? (
-        orgUnit.displayName || 
-        orgUnit.name || 
-        orgUnit.display_name || 
+        orgUnit.displayName ||
+        orgUnit.name ||
+        orgUnit.display_name ||
         orgUnit.org_unit_name ||
         `Org Unit ${id.slice(-4)}` // Fallback: show last 4 chars of ID
       ) : `Org Unit ${id.slice(-4)}`;
@@ -420,29 +421,29 @@ export default function AssessmentPage() {
   const handleOpenAssessment = async (assessmentId: string) => {
     setIsLoadingSavedAssessment(true);
     setState(prev => ({ ...prev, error: null }));
-    
+
     try {
       // Fetch the saved assessment data
       const response = await assessmentService.loadAssessment({ assessment_id: assessmentId });
-      
+
       // The response structure has the assessment data nested under assessment.assessment
       const savedAssessment = response.assessment || response;
-      
+
       // Extract the data from the saved assessment
       const indicatorData = savedAssessment.indicator_data;
       const metadata = savedAssessment.metadata || {};
-      
+
       // Convert dictionary format back to list format expected by Excel table
       let assessmentDataList: any[] = [];
-      
+
       if (indicatorData && typeof indicatorData === 'object') {
         // Group indicators by objective
         const objectivesMap: Record<string, any> = {};
-        
+
         Object.values(indicatorData).forEach((indicator: any) => {
           const objectiveId = indicator.objective_id || indicator.objectiveId;
           const objectiveName = indicator.objective_name || indicator.objectiveName;
-          
+
           if (!objectivesMap[objectiveId]) {
             objectivesMap[objectiveId] = {
               id: objectiveId,
@@ -450,16 +451,16 @@ export default function AssessmentPage() {
               indicators: []
             };
           }
-          
+
           objectivesMap[objectiveId].indicators.push(indicator);
         });
-        
+
         // Convert to the format expected by Excel table
         assessmentDataList = [{
           objectives: Object.values(objectivesMap)
         }];
       }
-      
+
       // Update state with the loaded assessment data
       setState(prev => ({
         ...prev,
@@ -490,12 +491,12 @@ export default function AssessmentPage() {
       setCurrentAssessmentName(savedAssessment.name);
 
       toast.success(`Opened "${savedAssessment.name}".`);
-      
+
     } catch (error) {
       console.error('Error loading saved assessment:', error);
       setState(prev => ({
         ...prev,
-        error: "We couldn't open that assessment. Try again in a moment." 
+        error: "We couldn't open that assessment. Try again in a moment."
       }));
       toast.error("We couldn't open that assessment. Try again in a moment.");
     } finally {
@@ -628,4 +629,4 @@ export default function AssessmentPage() {
               </div>
               </div>
   );
-} 
+}

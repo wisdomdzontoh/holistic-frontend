@@ -226,6 +226,24 @@
     --perf-4: 142 60% 55%; /* Moderately performing */
     --perf-5: 142 72% 29%; /* Highly performing */
 
+    /* Toasts — resolved here so Sonner's own --success-bg/--error-bg… variables
+       (same names as our tokens) can point at them without a self-reference. */
+    --toast-normal-bg: hsl(var(--card));
+    --toast-normal-text: hsl(var(--foreground));
+    --toast-normal-border: hsl(var(--border));
+    --toast-success-bg: hsl(var(--success-bg));
+    --toast-success-text: hsl(var(--success));
+    --toast-success-border: hsl(var(--success-border));
+    --toast-error-bg: hsl(var(--error-bg));
+    --toast-error-text: hsl(var(--error));
+    --toast-error-border: hsl(var(--error-border));
+    --toast-info-bg: hsl(var(--info-bg));
+    --toast-info-text: hsl(var(--info));
+    --toast-info-border: hsl(var(--info-border));
+    --toast-warning-bg: hsl(var(--warning-bg));
+    --toast-warning-text: hsl(var(--warning));
+    --toast-warning-border: hsl(var(--warning-border));
+
     /* Login surface — plain dotted canvas, no gradient. */
     --login-card-shadow: 213 55% 16% / 0.1;
 

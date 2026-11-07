@@ -83,7 +83,7 @@ export function BulkGenerateProgress({ isOpen, onClose, jobId, onViewAssessment 
     if (!item.saved_assessment_id) return;
     setDownloadingId(item.id);
     try {
-      const { blob, filename } = await assessmentService.exportSavedAssessmentExcel(item.saved_assessment_id);
+      const { blob, filename } = await assessmentService.exportSavedAssessmentExcel(item.saved_assessment_id, item.org_unit_name);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

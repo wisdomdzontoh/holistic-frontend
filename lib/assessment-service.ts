@@ -106,6 +106,7 @@ export interface AssessmentPeriod {
 
 import type { Period, PeriodType } from './dhis2/periods';
 export type { Period, PeriodType } from './dhis2/periods';
+import { assessmentExportFilename, filenameFromContentDisposition } from './download-filename';
 
 export interface DHIS2RelativePeriod {
   id: string;
@@ -206,11 +207,11 @@ class AssessmentService {
     };
 
     const response = await fetch(`${this.baseUrl}${endpoint}`, config);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     return response.json();
   }
 
@@ -219,7 +220,7 @@ class AssessmentService {
     if (assessmentPeriodId) {
       params.append('assessment_period_id', assessmentPeriodId.toString());
     }
-    
+
     return this.makeRequest(`/assessments/management/holistic-assessment-data/?${params}`);
   }
 
@@ -269,10 +270,10 @@ class AssessmentService {
       end_date: period.endDate,
       code: period.code
     }));
-    
+
     const response = await fetch(`${this.baseUrl}/assessments/holistic-assessment/export_excel/`, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'include', // Include cookies for session management
@@ -285,11 +286,11 @@ class AssessmentService {
         pre_calculated_scores: params.pre_calculated_scores || {},
       }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Export failed: ${response.statusText}`);
     }
-    
+
     return response.blob();
   }
 
@@ -308,10 +309,10 @@ class AssessmentService {
       end_date: period.endDate,
       code: period.code
     }));
-    
+
     const response = await fetch(`${this.baseUrl}/assessments/holistic-assessment/export_excel/`, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'include', // Include cookies for session management
@@ -324,22 +325,17 @@ class AssessmentService {
         pre_calculated_scores: params.pre_calculated_scores || {},
       }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Export failed: ${response.statusText}`);
     }
-    
-    // Extract filename from Content-Disposition header
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`; // fallback
-    
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1];
-      }
-    }
-    
+
+    // Filename from the server ("<Org unit>_<dd_mm_yyyy>.xlsx"); same convention if unreadable.
+    const filename = filenameFromContentDisposition(
+      response.headers.get('Content-Disposition'),
+      assessmentExportFilename(params.org_unit_names?.[0])
+    );
+
     const blob = await response.blob();
     return { blob, filename };
   }
@@ -411,12 +407,10 @@ class AssessmentService {
         if (!downloadResponse.ok) {
           throw new Error(`Export completed but download failed: ${downloadResponse.statusText}`);
         }
-        const contentDisposition = downloadResponse.headers.get('Content-Disposition');
-        let filename = `holistic-assessment-${new Date().toISOString().slice(0, 10)}.xlsx`;
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-          if (filenameMatch && filenameMatch[1]) filename = filenameMatch[1];
-        }
+        const filename = filenameFromContentDisposition(
+          downloadResponse.headers.get('Content-Disposition'),
+          assessmentExportFilename(params.org_unit_names?.[0])
+        );
         const blob = await downloadResponse.blob();
         return { blob, filename };
       }
@@ -542,7 +536,7 @@ class AssessmentService {
   }
 
   /** Download an already-generated SavedAssessment (e.g. a bulk-job result) without re-fetching DHIS2. */
-  async exportSavedAssessmentExcel(assessmentId: number): Promise<{ blob: Blob; filename: string }> {
+  async exportSavedAssessmentExcel(assessmentId: number, orgUnitName?: string): Promise<{ blob: Blob; filename: string }> {
     const response = await fetch(
       `${this.baseUrl}/assessments/holistic-assessment/export_saved_excel/?assessment_id=${assessmentId}`,
       { credentials: 'include' }
@@ -550,12 +544,10 @@ class AssessmentService {
     if (!response.ok) {
       throw new Error(`Export failed: ${response.statusText}`);
     }
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `assessment-${assessmentId}.xlsx`;
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-      if (filenameMatch && filenameMatch[1]) filename = filenameMatch[1];
-    }
+    const filename = filenameFromContentDisposition(
+      response.headers.get('Content-Disposition'),
+      assessmentExportFilename(orgUnitName)
+    );
     const blob = await response.blob();
     return { blob, filename };
   }
@@ -575,7 +567,7 @@ class AssessmentService {
 
   async getDHIS2RelativePeriods(): Promise<DHIS2RelativePeriod[]> {
     const response = await this.makeRequest('/assessments/management/dhis2-relative-periods/');
-    
+
     // Handle different response structures
     if (response && response.data && Array.isArray(response.data)) {
       return response.data;
@@ -589,7 +581,7 @@ class AssessmentService {
 
   async getDHIS2PeriodTypes(): Promise<any[]> {
     const response = await this.makeRequest('/assessments/management/dhis2-period-types/');
-    
+
     // Handle different response structures
     if (response && response.data && Array.isArray(response.data)) {
       return response.data;
@@ -666,7 +658,7 @@ class AssessmentService {
     if (userOnly) {
       params.append('user_only', 'true');
     }
-    
+
     const response = await this.makeRequest(`/assessments/management/dhis2-org-units/?${params}`);
     return Array.isArray(response.org_units) ? response.org_units : [];
   }
@@ -730,7 +722,7 @@ class AssessmentService {
       end_date: string;
       code: string;
     }> = [];
-    
+
     if (syncParams.periods && syncParams.periods.length > 0) {
       // Use the actual period codes from the periods array
       periods = syncParams.periods.map(period => ({
@@ -751,7 +743,7 @@ class AssessmentService {
         code: year.toString()
       }];
     }
-    
+
     return this.makeRequest('/assessments/holistic-assessment/fetch_data/', {
       method: 'POST',
       body: JSON.stringify({
@@ -879,7 +871,7 @@ class AssessmentService {
     if (params.format) {
       queryParams.append('format', params.format);
     }
-    
+
     return this.makeRequest(`/assessments/management/assessment-report/?${queryParams}`);
   }
 
@@ -896,7 +888,7 @@ class AssessmentService {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         score,
         org_unit_id: orgUnitId,
         assessment_period_id: assessmentPeriodId,
@@ -1003,7 +995,7 @@ class AssessmentService {
     if (assessmentPeriodId) {
       params.append('assessment_period_id', assessmentPeriodId.toString());
     }
-    
+
     return this.makeRequest(`/assessments/dashboard/summary/?${params}`);
   }
 
@@ -1012,7 +1004,7 @@ class AssessmentService {
     if (assessmentPeriodId) {
       params.append('assessment_period_id', assessmentPeriodId.toString());
     }
-    
+
     return this.makeRequest(`/assessments/dashboard/objectives/?${params}`);
   }
 
@@ -1021,7 +1013,7 @@ class AssessmentService {
     if (assessmentPeriodId) {
       params.append('assessment_period_id', assessmentPeriodId.toString());
     }
-    
+
     return this.makeRequest(`/assessments/dashboard/indicators/?${params}`);
   }
 
@@ -1039,7 +1031,7 @@ export const assessmentService = new AssessmentService();
  */
 export const generatePeriods = (type: string, baseYear: number): Period[] => {
   const periods: Period[] = [];
-  
+
   switch (type) {
     case 'Yearly':
       // Generate years from 2020 to current year + 5
@@ -1064,11 +1056,11 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
         { id: 'Q3', name: 'Q3', startMonth: 7, endMonth: 9 },
         { id: 'Q4', name: 'Q4', startMonth: 10, endMonth: 12 }
       ];
-      
+
       quarters.forEach(q => {
         const startDate = `${baseYear}-${q.startMonth.toString().padStart(2, '0')}-01`;
         const endDate = `${baseYear}-${q.endMonth.toString().padStart(2, '0')}-${new Date(baseYear, q.endMonth, 0).getDate()}`;
-        
+
         periods.push({
           id: `${baseYear}${q.id}`,
           name: `${baseYear} ${q.name}`,
@@ -1087,11 +1079,11 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
         { id: 'S1', name: 'SixMonthly 1', startMonth: 1, endMonth: 6 },
         { id: 'S2', name: 'SixMonthly 2', startMonth: 7, endMonth: 12 }
       ];
-      
+
       sixMonthlies.forEach(s => {
         const startDate = `${baseYear}-${s.startMonth.toString().padStart(2, '0')}-01`;
         const endDate = `${baseYear}-${s.endMonth.toString().padStart(2, '0')}-${new Date(baseYear, s.endMonth, 0).getDate()}`;
-        
+
         periods.push({
           id: `${baseYear}${s.id}`,
           name: `${baseYear} ${s.name}`,
@@ -1110,12 +1102,12 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
         { id: 'S1', name: 'SixMonthlyApril 1', startMonth: 4, endMonth: 9 },
         { id: 'S2', name: 'SixMonthlyApril 2', startMonth: 10, endMonth: 3, nextYear: true }
       ];
-      
+
       sixMonthlyAprils.forEach(s => {
         const startDate = `${baseYear}-${s.startMonth.toString().padStart(2, '0')}-01`;
         const endYear = s.nextYear ? baseYear + 1 : baseYear;
         const endDate = `${endYear}-${s.endMonth.toString().padStart(2, '0')}-${new Date(endYear, s.endMonth, 0).getDate()}`;
-        
+
         periods.push({
           id: `${baseYear}${s.id}`,
           name: `${baseYear} ${s.name}`,
@@ -1134,12 +1126,12 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
         { id: 'S1', name: 'SixMonthlyNov 1', startMonth: 11, endMonth: 4, nextYear: true },
         { id: 'S2', name: 'SixMonthlyNov 2', startMonth: 5, endMonth: 10 }
       ];
-      
+
       sixMonthlyNovs.forEach(s => {
         const startDate = `${baseYear}-${s.startMonth.toString().padStart(2, '0')}-01`;
         const endYear = s.nextYear ? baseYear + 1 : baseYear;
         const endDate = `${endYear}-${s.endMonth.toString().padStart(2, '0')}-${new Date(endYear, s.endMonth, 0).getDate()}`;
-        
+
         periods.push({
           id: `${baseYear}${s.id}`,
           name: `${baseYear} ${s.name}`,
@@ -1159,7 +1151,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
         const endMonth = startMonth + 1;
         const startDate = `${baseYear}-${startMonth.toString().padStart(2, '0')}-01`;
         const endDate = `${baseYear}-${endMonth.toString().padStart(2, '0')}-${new Date(baseYear, endMonth, 0).getDate()}`;
-        
+
         periods.push({
           id: `${baseYear}${i.toString().padStart(2, '0')}`,
           name: `${baseYear} BiMonthly ${i}`,
@@ -1177,7 +1169,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
       for (let month = 1; month <= 12; month++) {
         const startDate = `${baseYear}-${month.toString().padStart(2, '0')}-01`;
         const endDate = `${baseYear}-${month.toString().padStart(2, '0')}-${new Date(baseYear, month, 0).getDate()}`;
-        
+
         periods.push({
           id: `${baseYear}${month.toString().padStart(2, '0')}`,
           name: `${baseYear} Monthly ${month}`,
@@ -1190,7 +1182,7 @@ export const generatePeriods = (type: string, baseYear: number): Period[] => {
       }
       break;
   }
-  
+
   return periods;
 };
 
@@ -1266,4 +1258,4 @@ export const calculateRealTimeScore = async (
       error: 'Network error occurred'
     };
   }
-}; 
+};
